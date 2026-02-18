@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { NewsArticle, StudyStep, SelectedItem, ShadowingResult, GrammarPattern } from '@/lib/types';
+import { logEvent, resetSession } from '@/lib/events';
 import VideoStep from '@/components/VideoStep';
 import ScriptStep from '@/components/ScriptStep';
 import QuizStep from '@/components/QuizStep';
@@ -23,6 +24,12 @@ export default function StudyPage({ params }: { params: { articleId: string } })
   const [grammarPatterns, setGrammarPatterns] = useState<GrammarPattern[]>([]);
   const [selectedGrammar, setSelectedGrammar] = useState<GrammarPattern[]>([]);
 
+  // Analytics: session tracking
+  const sessionStartRef = useRef<number>(Date.now());
+  const stageStartRef = useRef<number>(Date.now());
+  const completedStagesRef = useRef<string[]>([]);
+  const sessionLoggedRef = useRef(false);
+
   const handleToggleGrammar = (pattern: GrammarPattern) => {
     setSelectedGrammar(prev => {
       const exists = prev.some(p => p.pattern === pattern.pattern);
@@ -31,6 +38,22 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     });
   };
 
+  // Stage transition with analytics
+  const changeStep = useCallback((newStep: StudyStep) => {
+    // Log stage_complete for current stage
+    const stageDuration = Date.now() - stageStartRef.current;
+    if (!completedStagesRef.current.includes(currentStep)) {
+      completedStagesRef.current.push(currentStep);
+    }
+    logEvent('stage_complete', { stage: currentStep, durationMs: stageDuration }, params.articleId);
+
+    // Log stage_enter for new stage
+    stageStartRef.current = Date.now();
+    logEvent('stage_enter', { stage: newStep }, params.articleId);
+
+    setCurrentStep(newStep);
+  }, [currentStep, params.articleId]);
+
   useEffect(() => {
     async function fetchArticle() {
       try {
@@ -38,6 +61,17 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         if (!res.ok) throw new Error('Article not found');
         const data = await res.json();
         setArticle(data.article);
+
+        // Log session_start after article loads
+        resetSession();
+        sessionStartRef.current = Date.now();
+        sessionLoggedRef.current = false;
+        logEvent('session_start', {
+          articleTitle: data.article.title,
+          topic: data.article.topic,
+          articleDate: data.article.newsDate,
+        }, params.articleId);
+        logEvent('stage_enter', { stage: 'video' }, params.articleId);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
       } finally {
@@ -46,6 +80,22 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     }
     fetchArticle();
   }, [params.articleId]);
+
+  // Log session_complete on unmount
+  useEffect(() => {
+    const completedStages = completedStagesRef.current;
+    return () => {
+      if (!sessionLoggedRef.current && !loading) {
+        sessionLoggedRef.current = true;
+        const totalTimeMs = Date.now() - sessionStartRef.current;
+        logEvent('session_complete', {
+          stagesCompleted: completedStages,
+          totalTimeMs,
+          completedAllStages: completedStages.length >= 4,
+        }, params.articleId);
+      }
+    };
+  }, [params.articleId, loading]);
 
   // 틀린 퀴즈 답 → sentence bank 저장
   const handleWrongAnswers = async (wrongWords: string[]) => {
@@ -100,6 +150,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
               hanja: w.hanja,
               chinese: w.chinese,
               meaning: w.meaning,
+              wordOrigin: w.wordOrigin,
               sourceArticleId: params.articleId,
             })),
           }),
@@ -151,7 +202,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         {STEPS.map((step) => (
           <button
             key={step.key}
-            onClick={() => setCurrentStep(step.key)}
+            onClick={() => changeStep(step.key)}
             className={`flex-1 text-xs py-2 rounded-md transition-all ${
               currentStep === step.key
                 ? 'bg-white text-blue-700 font-semibold shadow-sm'
@@ -167,13 +218,15 @@ export default function StudyPage({ params }: { params: { articleId: string } })
       {currentStep === 'video' && (
         <VideoStep
           article={article}
-          onNext={() => setCurrentStep('script')}
+          articleId={params.articleId}
+          onNext={() => changeStep('script')}
         />
       )}
 
       {currentStep === 'script' && (
         <ScriptStep
           article={article}
+          articleId={params.articleId}
           selectedWords={selectedWords}
           onSelectWord={(item) => {
             setSelectedWords(prev => {
@@ -182,7 +235,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
               return [...prev, item];
             });
           }}
-          onNext={() => setCurrentStep('quiz')}
+          onNext={() => changeStep('quiz')}
           onGrammarLoaded={(patterns) => setGrammarPatterns(patterns)}
           initialGrammarPatterns={grammarPatterns}
           selectedGrammar={selectedGrammar}
@@ -192,9 +245,10 @@ export default function StudyPage({ params }: { params: { articleId: string } })
 
       {currentStep === 'quiz' && (
         <QuizStep
+          articleId={params.articleId}
           selectedWords={selectedWords}
           grammarPatterns={selectedGrammar}
-          onNext={() => setCurrentStep('shadowing')}
+          onNext={() => changeStep('shadowing')}
           onWrongAnswers={handleWrongAnswers}
         />
       )}
@@ -202,6 +256,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
       {currentStep === 'shadowing' && (
         <ShadowingStep
           article={article}
+          articleId={params.articleId}
           onComplete={handleShadowingComplete}
         />
       )}

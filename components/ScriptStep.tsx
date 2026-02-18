@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import type { NewsArticle, SelectedItem, GrammarPattern } from '@/lib/types';
+import { useState, useRef } from 'react';
+import type { NewsArticle, SelectedItem, GrammarPattern, WordOrigin } from '@/lib/types';
+import { logEvent } from '@/lib/events';
 
 interface Props {
   article: NewsArticle;
+  articleId: string;
   selectedWords: SelectedItem[];
   onSelectWord: (item: SelectedItem) => void;
   onNext: () => void;
@@ -15,7 +17,7 @@ interface Props {
 }
 
 export default function ScriptStep({
-  article, selectedWords, onSelectWord, onNext,
+  article, articleId, selectedWords, onSelectWord, onNext,
   onGrammarLoaded, initialGrammarPatterns,
   selectedGrammar, onToggleGrammar,
 }: Props) {
@@ -25,12 +27,17 @@ export default function ScriptStep({
     hanja?: string;
     chinese?: string;
     meaning?: string;
+    wordOrigin?: WordOrigin;
     isFalseFriend?: boolean;
     falseFriendNote?: string;
     type: 'word' | 'phrase' | 'sentence';
     x: number;
     y: number;
   } | null>(null);
+
+  // Sentence read time tracking
+  const visibleSentenceRef = useRef<number>(0);
+  const sentenceStartRef = useRef<number>(Date.now());
 
   // 문법 패턴 — restore from parent if previously loaded
   const [grammarPatterns, setGrammarPatterns] = useState<(GrammarPattern & { sentenceIndex: number })[]>(
@@ -47,6 +54,7 @@ export default function ScriptStep({
   const analyzeGrammar = () => {
     if (!script || grammarPatterns.length > 0 || grammarLoading) return;
     setGrammarLoading(true);
+    logEvent('grammar_analyze', { sentenceCount: sentences.length }, articleId);
     fetch('/api/grammar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -107,8 +115,30 @@ export default function ScriptStep({
     return -1;
   };
 
+  // Log sentence read time when user moves to a different sentence
+  const logSentenceReadTime = (newSentenceIndex: number) => {
+    if (newSentenceIndex !== visibleSentenceRef.current) {
+      const durationMs = Date.now() - sentenceStartRef.current;
+      const prevSentence = sentences[visibleSentenceRef.current] || '';
+      const wordCount = prevSentence.split(/\s+/).filter(Boolean).length;
+      // Count hanja words (words with corresponding Chinese characters are harder to distinguish client-side,
+      // so we use a heuristic: count words that are likely hanja based on character patterns)
+      const hanjaWordCount = prevSentence.split(/\s+/).filter(w => /^[가-힣]{2,}$/.test(w)).length;
+      logEvent('sentence_read_time', {
+        sentenceIndex: visibleSentenceRef.current,
+        text: prevSentence.slice(0, 100),
+        durationMs,
+        wordCount,
+        hanjaWordCount,
+      }, articleId);
+      visibleSentenceRef.current = newSentenceIndex;
+      sentenceStartRef.current = Date.now();
+    }
+  };
+
   // 단어 클릭 처리
-  const handleWordClick = async (word: string, event: React.MouseEvent) => {
+  const handleWordClick = async (word: string, event: React.MouseEvent, sentenceIndex?: number) => {
+    if (sentenceIndex !== undefined) logSentenceReadTime(sentenceIndex);
     const rect = (event.target as HTMLElement).getBoundingClientRect();
     setPopup({ text: word, type: 'word', x: rect.left, y: rect.bottom + 8 });
 
@@ -126,9 +156,31 @@ export default function ScriptStep({
           hanja: data.hanja || undefined,
           chinese: data.chinese || undefined,
           meaning: data.meaning || undefined,
+          wordOrigin: data.wordOrigin || undefined,
           isFalseFriend: data.isFalseFriend || false,
           falseFriendNote: data.falseFriendNote || undefined,
         } : null);
+
+        // Log word_click with wordOrigin
+        logEvent('word_click', {
+          word,
+          wordOrigin: data.wordOrigin || null,
+          hanja: data.hanja || null,
+          chinese: data.chinese || null,
+          isFalseFriend: data.isFalseFriend || false,
+          falseFriendNote: data.falseFriendNote || null,
+        }, articleId);
+
+        // Log false_friend_seen if applicable
+        if (data.isFalseFriend) {
+          logEvent('false_friend_seen', {
+            word,
+            hanja: data.hanja || null,
+            koreanMeaning: data.meaning || null,
+            chineseMeaning: data.chinese || null,
+            falseFriendNote: data.falseFriendNote || null,
+          }, articleId);
+        }
       }
     } catch {
       // 분석 실패
@@ -144,8 +196,14 @@ export default function ScriptStep({
         hanja: popup.hanja,
         chinese: popup.chinese,
         meaning: popup.meaning,
+        wordOrigin: popup.wordOrigin,
         type: popup.type,
       });
+      logEvent('word_select', {
+        word: popup.text,
+        wordOrigin: popup.wordOrigin || null,
+        chinese: popup.chinese || null,
+      }, articleId);
       setPopup(null);
     }
   };
@@ -215,7 +273,7 @@ export default function ScriptStep({
                     const wordEl = (
                       <span
                         onClick={(e) => {
-                          if (isKorean) { e.stopPropagation(); handleWordClick(cleanToken, e); }
+                          if (isKorean) { e.stopPropagation(); handleWordClick(cleanToken, e, si); }
                         }}
                         className={`
                           ${isKorean ? 'cursor-pointer hover:bg-blue-100 rounded px-0.5 transition-colors' : ''}
@@ -298,6 +356,11 @@ export default function ScriptStep({
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggleGrammar(p);
+                          logEvent('grammar_select', {
+                            pattern: p.pattern,
+                            chineseMeaning: p.chineseMeaning,
+                            difficultyForChinese: p.difficultyForChinese || null,
+                          }, articleId);
                         }}
                         className={`mt-2 text-xs px-3 py-1 rounded-full transition-colors ${
                           selectedGrammar.some(g => g.pattern === p.pattern)

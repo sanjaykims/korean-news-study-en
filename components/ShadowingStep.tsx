@@ -2,13 +2,15 @@
 
 import { useState, useRef, useCallback } from 'react';
 import type { NewsArticle, ShadowingResult } from '@/lib/types';
+import { logEvent } from '@/lib/events';
 
 interface Props {
   article: NewsArticle;
+  articleId: string;
   onComplete: (results: ShadowingResult[]) => void;
 }
 
-export default function ShadowingStep({ article, onComplete }: Props) {
+export default function ShadowingStep({ article, articleId, onComplete }: Props) {
   // 스크립트를 문장 단위로 분리
   const script = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
   const sentences = script.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
@@ -22,6 +24,8 @@ export default function ShadowingStep({ article, onComplete }: Props) {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const rerecordCountRef = useRef(0);
+  const recordingStartRef = useRef<number>(0);
 
   const startRecording = useCallback(async () => {
     try {
@@ -44,6 +48,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
       mediaRecorder.start();
       setIsRecording(true);
       setAudioUrl(null);
+      recordingStartRef.current = Date.now();
     } catch {
       alert('需要麦克风访问权限。');
     }
@@ -53,8 +58,15 @@ export default function ShadowingStep({ article, onComplete }: Props) {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      const recordingDurationMs = Date.now() - recordingStartRef.current;
+      logEvent('shadowing_record', {
+        sentenceIndex: currentIndex,
+        sentence: sentences[currentIndex],
+        recordingDurationMs,
+        rerecordCount: rerecordCountRef.current,
+      }, articleId);
     }
-  }, [isRecording]);
+  }, [isRecording, currentIndex, sentences, articleId]);
 
   const handleScore = (score: number) => {
     const result: ShadowingResult = {
@@ -63,15 +75,33 @@ export default function ShadowingStep({ article, onComplete }: Props) {
       score,
     };
 
+    // Log shadowing_score
+    logEvent('shadowing_score', {
+      sentenceIndex: currentIndex,
+      sentence: sentences[currentIndex],
+      score,
+    }, articleId);
+
     const newResults = [...results, result];
     setResults(newResults);
 
     if (currentIndex + 1 < sentences.length) {
       setCurrentIndex(prev => prev + 1);
       setAudioUrl(null);
+      rerecordCountRef.current = 0;
     } else {
       setIsDone(true);
       onComplete(newResults);
+
+      // Log shadowing_complete
+      const avgScore = Math.round(newResults.reduce((sum, r) => sum + r.score, 0) / newResults.length);
+      const lowScoreCount = newResults.filter(r => r.score <= 2).length;
+      logEvent('shadowing_complete', {
+        avgScore,
+        totalSentences: newResults.length,
+        lowScoreCount,
+        sentenceScores: newResults.map(r => ({ index: r.sentenceIndex, score: r.score })),
+      }, articleId);
     }
   };
 
@@ -244,7 +274,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
 
           {/* 다시 녹음 */}
           <button
-            onClick={() => { setAudioUrl(null); }}
+            onClick={() => { setAudioUrl(null); rerecordCountRef.current += 1; }}
             className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             重新录音

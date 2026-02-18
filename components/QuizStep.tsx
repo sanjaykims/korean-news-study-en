@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SelectedItem, GrammarPattern } from '@/lib/types';
+import { logEvent } from '@/lib/events';
 
 interface QuizQuestion {
   id: number;
@@ -9,11 +10,13 @@ interface QuizQuestion {
   prompt: string;        // What to display as the question
   correctAnswer: string; // The correct option
   options: string[];     // All 4 options
+  wordOrigin?: string;   // 한자어/고유어/외래어/혼종어
   // Legacy fields (backward compat)
   koreanText?: string;
 }
 
 interface Props {
+  articleId: string;
   selectedWords: SelectedItem[];
   grammarPatterns: GrammarPattern[];
   onNext: () => void;
@@ -90,7 +93,7 @@ const HINT_TEXT: Record<string, string> = {
   'chinese_to_grammar': '对应的韩语语法是？',
 };
 
-export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWrongAnswers }: Props) {
+export default function QuizStep({ articleId, selectedWords, grammarPatterns, onNext, onWrongAnswers }: Props) {
   const [vocabQuestions, setVocabQuestions] = useState<QuizQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -98,12 +101,22 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
   const [showResult, setShowResult] = useState(false);
   const [results, setResults] = useState<{ correct: boolean; question: QuizQuestion }[]>([]);
   const [quizDone, setQuizDone] = useState(false);
+  const questionStartRef = useRef<number>(Date.now());
 
   // Generate grammar questions client-side
   const grammarQuestions = useMemo(
     () => generateGrammarQuestions(grammarPatterns),
     [grammarPatterns]
   );
+
+  // Build word → wordOrigin lookup from selectedWords
+  const wordOriginMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    selectedWords.forEach(w => {
+      if (w.wordOrigin) map[w.text] = w.wordOrigin;
+    });
+    return map;
+  }, [selectedWords]);
 
   useEffect(() => {
     async function generateQuiz() {
@@ -115,11 +128,15 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
         });
         const data = await res.json();
         if (data.questions) {
-          // Normalize: ensure all questions have 'prompt' field
-          const normalized = data.questions.map((q: QuizQuestion) => ({
-            ...q,
-            prompt: q.prompt || q.koreanText || '',
-          }));
+          // Normalize: ensure all questions have 'prompt' field and carry wordOrigin
+          const normalized = data.questions.map((q: QuizQuestion) => {
+            const prompt = q.prompt || q.koreanText || '';
+            return {
+              ...q,
+              prompt,
+              wordOrigin: wordOriginMap[prompt] || null,
+            };
+          });
           setVocabQuestions(normalized);
         }
       } catch {
@@ -133,7 +150,7 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
     } else {
       setLoading(false);
     }
-  }, [selectedWords]);
+  }, [selectedWords, wordOriginMap]);
 
   // Combine vocab + grammar questions
   const questions = useMemo(() => {
@@ -147,7 +164,21 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
 
     const question = questions[currentIndex];
     const correct = option === question.correctAnswer;
+    const timeMs = Date.now() - questionStartRef.current;
     setResults(prev => [...prev, { correct, question }]);
+
+    // Log quiz_answer event
+    logEvent('quiz_answer', {
+      questionId: question.id,
+      questionType: question.type,
+      correct,
+      prompt: question.prompt,
+      selectedOption: option,
+      correctAnswer: question.correctAnswer,
+      allOptions: question.options,
+      wordOrigin: question.wordOrigin || null,
+      timeMs,
+    }, articleId);
   };
 
   const handleNextQuestion = () => {
@@ -155,6 +186,7 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
       setCurrentIndex(prev => prev + 1);
       setSelectedOption(null);
       setShowResult(false);
+      questionStartRef.current = Date.now();
     } else {
       setQuizDone(true);
       const wrongWords = results
@@ -163,6 +195,28 @@ export default function QuizStep({ selectedWords, grammarPatterns, onNext, onWro
       if (wrongWords.length > 0) {
         onWrongAnswers(wrongWords);
       }
+
+      // Log quiz_complete with breakdown by word origin
+      const allResults = results;
+      const correct = allResults.filter(r => r.correct).length;
+      const total = allResults.length;
+      const hanjaResults = allResults.filter(r => r.question.wordOrigin === '한자어');
+      const goyuResults = allResults.filter(r => r.question.wordOrigin === '고유어');
+      const grammarResults = allResults.filter(r =>
+        r.question.type === 'grammar_to_chinese' || r.question.type === 'chinese_to_grammar'
+      );
+
+      logEvent('quiz_complete', {
+        correct,
+        total,
+        percentage: total > 0 ? Math.round((correct / total) * 100) : 0,
+        hanjaCorrect: hanjaResults.filter(r => r.correct).length,
+        hanjaTotal: hanjaResults.length,
+        goyuCorrect: goyuResults.filter(r => r.correct).length,
+        goyuTotal: goyuResults.length,
+        grammarCorrect: grammarResults.filter(r => r.correct).length,
+        grammarTotal: grammarResults.length,
+      }, articleId);
     }
   };
 

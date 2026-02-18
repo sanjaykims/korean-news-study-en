@@ -44,11 +44,16 @@ ${script}
   "meaning": "韩语释义",
   "chineseMeaning": "简体中文解释",
   "example": "脚本中找到的例句",
-  "sentenceIndex": 0
+  "sentenceIndex": 0,
+  "difficultyForChinese": "high"
 }]
 
 sentenceIndex是将脚本按句号分句后的索引。
 所有中文内容必须使用简体中文。
+difficultyForChinese必须是以下之一：
+- "high"：对中文母语者较难的语法（助词、动词活用、敬语、连接词尾）
+- "medium"：中等难度（时态标记、否定表达、被动/使动）
+- "low"：对中文母语者较简单的语法（汉字词结构、数字表达）
 只返回JSON。`,
       }],
     });

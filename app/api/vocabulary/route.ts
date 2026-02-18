@@ -19,28 +19,30 @@ export async function POST(request: NextRequest) {
     // 중복 확인
     const { data: existing } = await supabase
       .from('vocabulary_log')
-      .select('id')
+      .select('id, review_count')
       .eq('word', w.word)
+      .eq('user_id', 'yaofang')
       .limit(1);
 
     if (existing && existing.length > 0) {
       // 이미 존재 → review_count 증가
+      const currentCount = (existing[0] as { review_count?: number }).review_count || 0;
       await supabase
         .from('vocabulary_log')
         .update({
-          review_count: (existing[0] as { review_count?: number }).review_count
-            ? ((existing[0] as { review_count?: number }).review_count || 0) + 1
-            : 1,
+          review_count: currentCount + 1,
           last_reviewed_at: new Date().toISOString(),
         })
         .eq('id', existing[0].id);
     } else {
       // 신규 삽입
       await supabase.from('vocabulary_log').insert({
+        user_id: 'yaofang',
         word: w.word,
         hanja: w.hanja || null,
         chinese: w.chinese || null,
         meaning: w.meaning || null,
+        word_origin: w.wordOrigin || null,
         source_article_id: w.sourceArticleId || null,
       });
       saved++;

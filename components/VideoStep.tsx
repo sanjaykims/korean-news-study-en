@@ -1,15 +1,18 @@
 'use client';
 
+import { useState, useRef, useCallback } from 'react';
 import { useYouTubePlayer } from '@/lib/youtube';
 import type { NewsArticle } from '@/lib/types';
 import { formatTime } from '@/lib/types';
+import { logEvent } from '@/lib/events';
 
 interface Props {
   article: NewsArticle;
+  articleId: string;
   onNext: () => void;
 }
 
-export default function VideoStep({ article, onNext }: Props) {
+export default function VideoStep({ article, articleId, onNext }: Props) {
   const containerId = 'yt-player';
   const { isReady, isPlaying, isEnded, play, pause, replay } = useYouTubePlayer({
     containerId,
@@ -18,9 +21,33 @@ export default function VideoStep({ article, onNext }: Props) {
     endTime: article.endTime,
   });
 
+  const [replayCount, setReplayCount] = useState(0);
+  const playStartRef = useRef<number>(0);
+  const totalWatchedRef = useRef<number>(0);
+
   // 스크립트 문장 분리 (교정본 또는 원본)
   const script = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
   const sentences = script.split(/(?<=[.!?])\s+/).filter(Boolean);
+
+  const handlePlay = useCallback(() => {
+    playStartRef.current = Date.now();
+    logEvent('video_play', { currentTime: article.startTime }, articleId);
+    play();
+  }, [play, article.startTime, articleId]);
+
+  const handlePause = useCallback(() => {
+    const watchedMs = Date.now() - playStartRef.current;
+    totalWatchedRef.current += watchedMs;
+    logEvent('video_pause', { currentTime: 0, watchedMs }, articleId);
+    pause();
+  }, [pause, articleId]);
+
+  const handleReplay = useCallback(() => {
+    const newCount = replayCount + 1;
+    setReplayCount(newCount);
+    logEvent('video_replay', { replayCount: newCount }, articleId);
+    replay();
+  }, [replay, replayCount, articleId]);
 
 
   return (
@@ -38,14 +65,14 @@ export default function VideoStep({ article, onNext }: Props) {
         <div className="flex gap-2">
           {isEnded ? (
             <button
-              onClick={replay}
+              onClick={handleReplay}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
             >
               重新播放
             </button>
           ) : (
             <button
-              onClick={() => isPlaying ? pause() : play()}
+              onClick={() => isPlaying ? handlePause() : handlePlay()}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
               disabled={!isReady}
             >

@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     score?: number;
     sourceArticleId?: string;
   }) => ({
+    user_id: 'yaofang',
     sentence: item.sentence,
     source: item.source,
     score: item.score || null,

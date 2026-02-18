@@ -86,7 +86,11 @@ export interface GrammarPattern {
   meaning: string;
   chineseMeaning: string;
   example: string;
+  difficultyForChinese?: 'high' | 'medium' | 'low';
 }
+
+// 단어 출처 분류 (중국어 화자 학습 분석용)
+export type WordOrigin = '한자어' | '고유어' | '외래어' | '혼종어';
 
 // 스크립트 학습에서 사용자가 선택한 단어/구문
 export interface SelectedItem {
@@ -94,6 +98,7 @@ export interface SelectedItem {
   hanja?: string;
   chinese?: string;
   meaning?: string;
+  wordOrigin?: WordOrigin;
   type: 'word' | 'phrase' | 'sentence';
 }
 

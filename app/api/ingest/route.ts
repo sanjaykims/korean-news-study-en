@@ -130,23 +130,23 @@ async function processIngest(
     splitResults.map(a => ({ reporter: a.reporter, content: a.content })),
   );
 
-  // 각 기사 대본 교정 + DB 삽입
-  const articlesToInsert = await Promise.all(
-    splitResults.map(async (article, i) => {
-      const proofread = await proofreadTranscript(article.content);
-      return {
-        video_id: videoRow.id,
-        title: titlesAndTopics[i]?.title || `${article.reporter} 기자 보도`,
-        reporter_name: article.reporter,
-        topic: titlesAndTopics[i]?.topic || '사회',
-        start_time: article.startTime || 0,
-        end_time: article.endTime || 0,
-        transcript_original: [{ text: article.content, start: article.startTime || 0, end: article.endTime || 0 }],
-        transcript_proofread: proofread,
-        article_order: article.articleOrder,
-      };
-    }),
-  );
+  // 각 기사 대본 교정 + DB 삽입 (순차 처리 — rate limit 방지)
+  const articlesToInsert = [];
+  for (let i = 0; i < splitResults.length; i++) {
+    const article = splitResults[i];
+    const proofread = await proofreadTranscript(article.content);
+    articlesToInsert.push({
+      video_id: videoRow.id,
+      title: titlesAndTopics[i]?.title || `${article.reporter} 기자 보도`,
+      reporter_name: article.reporter,
+      topic: titlesAndTopics[i]?.topic || '사회',
+      start_time: article.startTime || 0,
+      end_time: article.endTime || 0,
+      transcript_original: [{ text: article.content, start: article.startTime || 0, end: article.endTime || 0 }],
+      transcript_proofread: proofread,
+      article_order: article.articleOrder,
+    });
+  }
 
   const { error: articlesError } = await supabase
     .from('news_articles')

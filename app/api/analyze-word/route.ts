@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 
 // POST /api/analyze-word
 // 단어의 한자어 분석 — 한자, 중국어 대응, 뜻, false friend 여부
@@ -20,7 +21,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({

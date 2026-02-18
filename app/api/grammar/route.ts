@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 
 // POST /api/grammar
 // 뉴스 스크립트에서 문법 패턴 감지
@@ -14,7 +15,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({

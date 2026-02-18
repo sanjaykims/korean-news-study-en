@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 
 // POST /api/quiz
 // 선택한 단어들로 퀴즈 생성 (Chinese↔Korean)
@@ -22,7 +23,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
     const wordList = words

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { splitArticles } from '@/lib/articleSplitter';
 import { getTranscript, TranscriptSegment } from '@/lib/youtubeTranscript';
+import Anthropic from '@anthropic-ai/sdk';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const YouTube = require('youtube-search-api');
 
 // 날짜를 한국어 검색 형식으로 (예: "2026년 2월 14일")
 function formatDateKorean(dateStr: string): string {
@@ -27,8 +30,6 @@ function getTargetDateKST(): string {
 
 // YouTube 검색
 async function searchYouTube(query: string): Promise<{ id: string; title: string; duration: string }[]> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const YouTube = require('youtube-search-api');
   const results = await YouTube.GetListByKeyword(query, false, 10);
   return (results.items || [])
     .filter((item: Record<string, unknown>) => item.type === 'video')
@@ -59,7 +60,6 @@ async function generateTitlesAndTopics(
     }));
   }
 
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const client = new Anthropic({ apiKey });
 
   const articlesText = articles
@@ -100,7 +100,6 @@ async function proofreadTranscript(content: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return content;
 
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const client = new Anthropic({ apiKey });
 
   const response = await client.messages.create({

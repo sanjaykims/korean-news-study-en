@@ -105,6 +105,7 @@ async function processIngest(
     .insert({
       youtube_id: youtubeId,
       title: videoTitle,
+      broadcaster: 'JTBC',
       broadcast_date: targetDate,
       duration_seconds: durationSeconds,
       thumbnail_url: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,

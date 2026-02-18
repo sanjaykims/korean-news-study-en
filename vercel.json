@@ -4,5 +4,10 @@
       "path": "/api/ingest",
       "schedule": "0 14 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/ingest/route.ts": {
+      "maxDuration": 300
+    }
+  }
 }

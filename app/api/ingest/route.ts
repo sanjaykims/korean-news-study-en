@@ -6,6 +6,9 @@ import Anthropic from '@anthropic-ai/sdk';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const YouTube = require('youtube-search-api');
 
+// Vercel serverless 최대 실행 시간 (초)
+export const maxDuration = 300;
+
 // 날짜를 한국어 검색 형식으로 (예: "2026년 2월 14일")
 function formatDateKorean(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');

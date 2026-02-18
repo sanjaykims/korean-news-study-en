@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { NewsArticle, StudyStep } from '@/lib/types';
+import type { NewsArticle, StudyStep, SelectedItem, ShadowingResult } from '@/lib/types';
 import VideoStep from '@/components/VideoStep';
 import ScriptStep from '@/components/ScriptStep';
-import type { SelectedItem } from '@/lib/types';
+import QuizStep from '@/components/QuizStep';
+import ShadowingStep from '@/components/ShadowingStep';
 
-const STEPS: { key: StudyStep; label: string; num: number }[] = [
-  { key: 'video', label: '영상 시청', num: 2 },
-  { key: 'script', label: '스크립트 학습', num: 3 },
-  { key: 'quiz', label: '퀴즈', num: 4 },
-  { key: 'shadowing', label: '쉐도잉', num: 5 },
+const STEPS: { key: StudyStep; label: string }[] = [
+  { key: 'video', label: '영상 시청' },
+  { key: 'script', label: '스크립트' },
+  { key: 'quiz', label: '퀴즈' },
+  { key: 'shadowing', label: '쉐도잉' },
 ];
 
 export default function StudyPage({ params }: { params: { articleId: string } }) {
@@ -35,6 +36,69 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     }
     fetchArticle();
   }, [params.articleId]);
+
+  // 틀린 퀴즈 답 → sentence bank 저장
+  const handleWrongAnswers = async (wrongWords: string[]) => {
+    try {
+      await fetch('/api/sentence-bank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: wrongWords.map(w => ({
+            sentence: w,
+            source: 'quiz',
+            sourceArticleId: params.articleId,
+          })),
+        }),
+      });
+    } catch {
+      // 저장 실패 무시
+    }
+  };
+
+  // 쉐도잉 결과 → 낮은 점수 문장 sentence bank 저장
+  const handleShadowingComplete = async (results: ShadowingResult[]) => {
+    const lowScores = results.filter(r => r.score <= 2);
+    if (lowScores.length === 0) return;
+
+    try {
+      await fetch('/api/sentence-bank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: lowScores.map(r => ({
+            sentence: r.sentence,
+            source: 'shadowing',
+            score: r.score,
+            sourceArticleId: params.articleId,
+          })),
+        }),
+      });
+    } catch {
+      // 저장 실패 무시
+    }
+
+    // 선택한 단어 → vocabulary_log 저장
+    if (selectedWords.length > 0) {
+      try {
+        await fetch('/api/vocabulary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            words: selectedWords.map(w => ({
+              word: w.text,
+              hanja: w.hanja,
+              chinese: w.chinese,
+              meaning: w.meaning,
+              sourceArticleId: params.articleId,
+            })),
+          }),
+        });
+      } catch {
+        // 저장 실패 무시
+      }
+    }
+  };
 
   if (loading) {
     return (
@@ -113,23 +177,18 @@ export default function StudyPage({ params }: { params: { articleId: string } })
       )}
 
       {currentStep === 'quiz' && (
-        <div className="text-center py-20 text-gray-500">
-          <p className="text-lg mb-2">퀴즈 (준비 중)</p>
-          <p className="text-sm">선택한 단어 {selectedWords.length}개로 퀴즈를 생성합니다</p>
-          <button
-            onClick={() => setCurrentStep('shadowing')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
-          >
-            다음: 쉐도잉
-          </button>
-        </div>
+        <QuizStep
+          selectedWords={selectedWords}
+          onNext={() => setCurrentStep('shadowing')}
+          onWrongAnswers={handleWrongAnswers}
+        />
       )}
 
       {currentStep === 'shadowing' && (
-        <div className="text-center py-20 text-gray-500">
-          <p className="text-lg mb-2">쉐도잉 + 발음 체크 (준비 중)</p>
-          <p className="text-sm">문장별 따라 읽기 + 발음 평가</p>
-        </div>
+        <ShadowingStep
+          article={article}
+          onComplete={handleShadowingComplete}
+        />
       )}
     </div>
   );

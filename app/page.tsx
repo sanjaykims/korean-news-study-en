@@ -3,8 +3,12 @@
 import { useState, useEffect } from 'react';
 import { formatTime, TOPIC_COLORS } from '@/lib/types';
 import type { ArticleListItem } from '@/lib/types';
+import ReviewStep from '@/components/ReviewStep';
+
+type PageView = 'review' | 'articles';
 
 export default function Home() {
+  const [view, setView] = useState<PageView>('review');
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +39,21 @@ export default function Home() {
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
   };
 
+  // Step 0: 복습
+  if (view === 'review') {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <header className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">JTBC 뉴스 스터디</h1>
+          <p className="text-sm text-gray-500 mt-1">뉴스로 배우는 한국어</p>
+        </header>
+
+        <ReviewStep onDone={() => setView('articles')} />
+      </div>
+    );
+  }
+
+  // Step 1: 오늘의 뉴스 목록
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       {/* 헤더 */}

@@ -1,4 +1,6 @@
 // 뉴스 대본 분할기 — JTBC 전용
+// Method 1: 기자 보도 패턴 (standard news format)
+// Method 2: 시간 기반 분할 (TOP10, discussion formats)
 
 export interface TranscriptSegment {
   text: string;
@@ -42,7 +44,6 @@ function findEnd(text: string): { match: RegExpExecArray | null } {
     }
   }
 
-  // generic fallback
   if (!best) {
     const generic = /([가-힣]{2,4})\s*입니다\s*$/.exec(text);
     if (generic) best = generic;
@@ -67,13 +68,8 @@ function findStart(text: string): { match: RegExpExecArray; reporter: string } |
   return { match: best, reporter: bestReporter };
 }
 
-/**
- * JTBC 뉴스 대본을 개별 기사로 분할
- */
-export function splitArticles(
-  transcript: TranscriptSegment[],
-): SplitArticle[] {
-  // 모든 세그먼트를 하나의 문자열로 합치면서 charIndex → segmentIndex 매핑
+// Method 1: 기자 패턴 기반 분할
+function splitByReporterPatterns(transcript: TranscriptSegment[]): SplitArticle[] {
   let full = '';
   const charToSegment: Map<number, number> = new Map();
 
@@ -117,7 +113,6 @@ export function splitArticles(
       }
     }
 
-    // charIndex → 비디오 타임스탬프
     const startSegIdx = charToSegment.get(articleStartCharPos);
     const startTime = startSegIdx !== undefined ? transcript[startSegIdx].start : null;
 
@@ -127,19 +122,70 @@ export function splitArticles(
       endTime = transcript[endSegIdx].start + transcript[endSegIdx].duration;
     }
 
-    // 최소 길이 필터
     if (content && content.length > 50) {
-      articles.push({
-        reporter,
-        content,
-        startTime,
-        endTime,
-        articleOrder: order++,
-      });
+      articles.push({ reporter, content, startTime, endTime, articleOrder: order++ });
     }
 
     pos = articleEndCharPos;
   }
 
   return articles;
+}
+
+// Method 2: 시간 기반 분할 (3~5분 단위)
+// TOP10, 토론, 해설 등 기자 패턴이 없는 포맷용
+function splitByTime(transcript: TranscriptSegment[], targetMinutes: number = 4): SplitArticle[] {
+  if (transcript.length === 0) return [];
+
+  const totalDuration = transcript[transcript.length - 1].start + transcript[transcript.length - 1].duration;
+  const targetDuration = targetMinutes * 60;
+  const numArticles = Math.max(1, Math.round(totalDuration / targetDuration));
+
+  const articles: SplitArticle[] = [];
+  const segPerArticle = Math.ceil(transcript.length / numArticles);
+
+  for (let i = 0; i < numArticles; i++) {
+    const startIdx = i * segPerArticle;
+    const endIdx = Math.min((i + 1) * segPerArticle, transcript.length);
+
+    if (startIdx >= transcript.length) break;
+
+    const segs = transcript.slice(startIdx, endIdx);
+    const content = segs.map(s => s.text).join(' ').trim();
+
+    // 음악, 빈 세그먼트 등 필터
+    const cleanContent = content
+      .replace(/\[음악\]/g, '')
+      .replace(/>>/g, '')
+      .trim();
+
+    if (cleanContent.length > 50) {
+      articles.push({
+        reporter: `파트 ${i + 1}`,
+        content: cleanContent,
+        startTime: segs[0].start,
+        endTime: segs[segs.length - 1].start + segs[segs.length - 1].duration,
+        articleOrder: i,
+      });
+    }
+  }
+
+  return articles;
+}
+
+/**
+ * JTBC 뉴스 대본을 개별 기사로 분할
+ * 기자 패턴이 있으면 패턴 기반, 없으면 시간 기반 분할
+ */
+export function splitArticles(
+  transcript: TranscriptSegment[],
+): SplitArticle[] {
+  // 먼저 기자 패턴 기반 분할 시도
+  const byReporter = splitByReporterPatterns(transcript);
+  if (byReporter.length >= 2) {
+    return byReporter;
+  }
+
+  // Fallback: 시간 기반 분할 (4분 단위)
+  return splitByTime(transcript, 4);
 }

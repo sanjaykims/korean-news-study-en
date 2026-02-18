@@ -1,55 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { splitArticles } from '@/lib/articleSplitter';
-import { getTranscript, TranscriptSegment } from '@/lib/youtubeTranscript';
+import { TranscriptSegment } from '@/lib/youtubeTranscript';
 import Anthropic from '@anthropic-ai/sdk';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const YouTube = require('youtube-search-api');
 
 // Vercel serverless 최대 실행 시간 (초)
 export const maxDuration = 300;
-
-// 날짜를 한국어 검색 형식으로 (예: "2026년 2월 14일")
-function formatDateKorean(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-}
-
-// 현재 KST 시간
-function getKSTNow(): Date {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000);
-}
-
-// 수집 대상 날짜 (KST 06시 이전이면 전날)
-function getTargetDateKST(): string {
-  const kst = getKSTNow();
-  const kstHour = kst.getUTCHours();
-  if (kstHour < 6) {
-    const yesterday = new Date(kst.getTime() - 24 * 60 * 60 * 1000);
-    return yesterday.toISOString().split('T')[0];
-  }
-  return kst.toISOString().split('T')[0];
-}
-
-// YouTube 검색
-async function searchYouTube(query: string): Promise<{ id: string; title: string; duration: string }[]> {
-  const results = await YouTube.GetListByKeyword(query, false, 10);
-  return (results.items || [])
-    .filter((item: Record<string, unknown>) => item.type === 'video')
-    .map((item: Record<string, unknown>) => ({
-      id: item.id as string,
-      title: item.title as string,
-      duration: (item.length as Record<string, unknown>)?.simpleText as string || '',
-    }));
-}
-
-// 영상 길이를 초로 변환
-function parseDuration(duration: string): number {
-  const parts = duration.split(':').map(Number);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] || 0;
-}
 
 // Claude API로 기사 제목 + 토픽 생성
 async function generateTitlesAndTopics(
@@ -123,64 +79,35 @@ ${content}`,
   return text.trim() || content;
 }
 
-// JTBC 수집 메인 로직
-async function ingestJTBC(
+// 메인 수집 로직 — 브라우저에서 전달받은 transcript 사용
+async function processIngest(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   targetDate: string,
-  dateKorean: string,
+  youtubeId: string,
+  videoTitle: string,
+  durationSeconds: number,
+  transcript: TranscriptSegment[],
 ): Promise<{ articles: number; error?: string; skipped?: boolean }> {
   // 중복 확인
-  const { data: existing } = await supabase
-    .from('news_videos')
-    .select('id')
-    .eq('broadcast_date', targetDate)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    return { articles: 0, skipped: true };
-  }
-
-  // YouTube 검색
-  const searchQuery = `JTBC 뉴스룸 풀영상 ${dateKorean}`;
-  const results = await searchYouTube(searchQuery);
-
-  const fullBroadcast = results.find(r => parseDuration(r.duration) >= 1200);
-  if (!fullBroadcast) {
-    return { articles: 0, error: `풀 방송 영상을 찾지 못했습니다 (검색: "${searchQuery}")` };
-  }
-
-  // youtube_id 중복 확인
   const { data: existingVideo } = await supabase
     .from('news_videos')
     .select('id')
-    .eq('youtube_id', fullBroadcast.id)
+    .eq('youtube_id', youtubeId)
     .single();
 
   if (existingVideo) {
     return { articles: 0, skipped: true };
   }
 
-  // 자막 추출
-  let transcript: TranscriptSegment[];
-  try {
-    transcript = await getTranscript(fullBroadcast.id);
-  } catch {
-    return { articles: 0, error: `자막 추출 실패 (${fullBroadcast.id})` };
-  }
-
-  if (transcript.length === 0) {
-    return { articles: 0, error: `자막 없음 (${fullBroadcast.id})` };
-  }
-
   // news_videos 삽입
   const { data: videoRow, error: videoError } = await supabase
     .from('news_videos')
     .insert({
-      youtube_id: fullBroadcast.id,
-      title: fullBroadcast.title,
+      youtube_id: youtubeId,
+      title: videoTitle,
       broadcast_date: targetDate,
-      duration_seconds: parseDuration(fullBroadcast.duration),
-      thumbnail_url: `https://img.youtube.com/vi/${fullBroadcast.id}/maxresdefault.jpg`,
+      duration_seconds: durationSeconds,
+      thumbnail_url: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,
       transcript_raw: transcript,
     })
     .select('id')
@@ -231,7 +158,20 @@ async function ingestJTBC(
   return { articles: articlesToInsert.length };
 }
 
-async function handleIngest(request: NextRequest) {
+/**
+ * POST /api/ingest
+ * 브라우저에서 YouTube 자막을 추출해서 전달하면
+ * 서버에서 기사 분할 + Claude 교정 + DB 저장 처리
+ *
+ * Body: {
+ *   date: "2026-02-17",
+ *   youtubeId: "xxxxx",
+ *   videoTitle: "JTBC 뉴스룸...",
+ *   durationSeconds: 3600,
+ *   transcript: [{text, start, duration}, ...]
+ * }
+ */
+export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
 
@@ -244,45 +184,51 @@ async function handleIngest(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
   }
 
-  let targetDate: string;
-  if (request.method === 'POST') {
-    const body = await request.json().catch(() => ({}));
-    targetDate = (body as Record<string, string>).date || getTargetDateKST();
-  } else {
-    const { searchParams } = new URL(request.url);
-    targetDate = searchParams.get('date') || getTargetDateKST();
+  const body = await request.json().catch(() => ({}));
+  const { date, youtubeId, videoTitle, durationSeconds, transcript } = body as {
+    date: string;
+    youtubeId: string;
+    videoTitle: string;
+    durationSeconds: number;
+    transcript: TranscriptSegment[];
+  };
+
+  if (!date || !youtubeId || !transcript?.length) {
+    return NextResponse.json(
+      { error: 'date, youtubeId, transcript[] required' },
+      { status: 400 },
+    );
   }
 
-  const dateKorean = formatDateKorean(targetDate);
-
-  console.log(`[ingest] JTBC 수집 시작: date=${targetDate}`);
+  console.log(`[ingest] 수집 시작: date=${date}, video=${youtubeId}, segments=${transcript.length}`);
 
   try {
-    const result = await ingestJTBC(supabase, targetDate, dateKorean);
+    const result = await processIngest(
+      supabase,
+      date,
+      youtubeId,
+      videoTitle || 'JTBC 뉴스룸',
+      durationSeconds || 0,
+      transcript,
+    );
 
     if (result.skipped) {
-      console.log(`[ingest] JTBC: 이미 처리됨 (skip)`);
+      console.log(`[ingest] 이미 처리됨 (skip)`);
     } else if (result.error) {
-      console.log(`[ingest] JTBC: 실패 — ${result.error}`);
+      console.log(`[ingest] 실패 — ${result.error}`);
     } else {
-      console.log(`[ingest] JTBC: 성공, ${result.articles}개 기사`);
+      console.log(`[ingest] 성공, ${result.articles}개 기사`);
     }
 
-    return NextResponse.json({
-      date: targetDate,
-      ...result,
-    });
+    return NextResponse.json({ date, ...result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[ingest] JTBC: 예외 — ${msg}`);
-    return NextResponse.json({ date: targetDate, articles: 0, error: msg }, { status: 500 });
+    console.log(`[ingest] 예외 — ${msg}`);
+    return NextResponse.json({ date, articles: 0, error: msg }, { status: 500 });
   }
 }
 
-export async function GET(request: NextRequest) {
-  return handleIngest(request);
-}
-
-export async function POST(request: NextRequest) {
-  return handleIngest(request);
+// GET — 상태 확인용
+export async function GET() {
+  return NextResponse.json({ status: 'ok', message: 'Use POST with transcript data or use /admin page' });
 }

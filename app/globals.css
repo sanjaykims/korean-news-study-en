@@ -3,25 +3,32 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* 스크립트 학습 — 선택 하이라이트 */
+.word-selectable::selection {
+  background-color: #bfdbfe;
+}
+
+/* 현재 재생 중인 문장 하이라이트 */
+.sentence-active {
+  background-color: #dbeafe;
+  border-left: 3px solid #3b82f6;
+  padding-left: 8px;
+  transition: background-color 0.3s ease;
+}
+
+/* 스피너 애니메이션 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
 }

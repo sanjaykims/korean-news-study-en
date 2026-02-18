@@ -85,13 +85,6 @@ async function extractTranscript(videoId: string): Promise<{ text: string; start
   return segments;
 }
 
-function parseDuration(d: string): number {
-  const parts = d.split(':').map(Number);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] || 0;
-}
-
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -124,8 +117,7 @@ export default function AdminPage() {
       // 여러 쿼리로 검색
       const queries = [
         `JTBC 뉴스룸 풀영상 ${dateKorean}`,
-        `JTBC 뉴스 ${dateKorean}`,
-        `JTBC 아침& ${dateKorean}`,
+        `JTBC 뉴스룸 다시보기 ${dateKorean}`,
       ];
 
       const allVideos: VideoResult[] = [];
@@ -136,7 +128,7 @@ export default function AdminPage() {
           const res = await fetch('/api/youtube-search?q=' + encodeURIComponent(query));
           const data = await res.json();
           for (const v of data.videos || []) {
-            if (!seenIds.has(v.id) && v.channel.includes('JTBC')) {
+            if (!seenIds.has(v.id) && v.channel.includes('JTBC') && v.title.includes('뉴스룸')) {
               seenIds.add(v.id);
               allVideos.push(v);
             }
@@ -218,7 +210,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">JTBC 뉴스 수집 관리</h1>
+        <h1 className="text-2xl font-bold mb-6">JTBC 뉴스룸 수집</h1>
 
         <div className="bg-white rounded-xl p-6 shadow-sm mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">수집 날짜</label>

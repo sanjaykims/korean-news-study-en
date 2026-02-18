@@ -54,31 +54,6 @@ ${articlesText}`,
   }
 }
 
-// Claude로 대본 교정 (맞춤법, 띄어쓰기, 조사)
-async function proofreadTranscript(content: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return content;
-
-  const client = new Anthropic({ apiKey });
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
-    max_tokens: 4096,
-    messages: [{
-      role: 'user',
-      content: `다음은 YouTube 자동 생성 자막에서 추출한 한국어 뉴스 대본입니다.
-맞춤법, 띄어쓰기, 조사, 문장부호를 교정해 주세요.
-원래 내용과 문장 구조는 유지하되, 자연스러운 한국어 뉴스 대본으로 교정해 주세요.
-교정된 대본만 반환하고, 설명이나 메모는 포함하지 마세요.
-
-${content}`,
-    }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  return text.trim() || content;
-}
-
 // 메인 수집 로직 — 브라우저에서 전달받은 transcript 사용
 async function processIngest(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,

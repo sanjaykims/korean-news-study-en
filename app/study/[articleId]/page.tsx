@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { NewsArticle, StudyStep, SelectedItem, ShadowingResult } from '@/lib/types';
+import type { NewsArticle, StudyStep, SelectedItem, ShadowingResult, GrammarPattern } from '@/lib/types';
 import VideoStep from '@/components/VideoStep';
 import ScriptStep from '@/components/ScriptStep';
 import QuizStep from '@/components/QuizStep';
 import ShadowingStep from '@/components/ShadowingStep';
 
 const STEPS: { key: StudyStep; label: string }[] = [
-  { key: 'video', label: '영상 시청' },
-  { key: 'script', label: '스크립트' },
-  { key: 'quiz', label: '퀴즈' },
-  { key: 'shadowing', label: '쉐도잉' },
+  { key: 'video', label: '观看视频' },
+  { key: 'script', label: '脚本学习' },
+  { key: 'quiz', label: '测验' },
+  { key: 'shadowing', label: '跟读' },
 ];
 
 export default function StudyPage({ params }: { params: { articleId: string } }) {
@@ -20,6 +20,16 @@ export default function StudyPage({ params }: { params: { articleId: string } })
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<StudyStep>('video');
   const [selectedWords, setSelectedWords] = useState<SelectedItem[]>([]);
+  const [grammarPatterns, setGrammarPatterns] = useState<GrammarPattern[]>([]);
+  const [selectedGrammar, setSelectedGrammar] = useState<GrammarPattern[]>([]);
+
+  const handleToggleGrammar = (pattern: GrammarPattern) => {
+    setSelectedGrammar(prev => {
+      const exists = prev.some(p => p.pattern === pattern.pattern);
+      if (exists) return prev.filter(p => p.pattern !== pattern.pattern);
+      return [...prev, pattern];
+    });
+  };
 
   useEffect(() => {
     async function fetchArticle() {
@@ -115,7 +125,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
           {error || 'Article not found'}
         </div>
         <a href="/" className="text-blue-600 text-sm mt-4 inline-block">
-          ← 목록으로 돌아가기
+          ← 返回列表
         </a>
       </div>
     );
@@ -132,7 +142,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         </a>
         <div>
           <h1 className="text-lg font-bold text-gray-900">{article.title}</h1>
-          <p className="text-xs text-gray-500">{article.reporter} 기자</p>
+          <p className="text-xs text-gray-500">{article.reporter ? `记者 ${article.reporter}` : ''}</p>
         </div>
       </div>
 
@@ -173,12 +183,17 @@ export default function StudyPage({ params }: { params: { articleId: string } })
             });
           }}
           onNext={() => setCurrentStep('quiz')}
+          onGrammarLoaded={(patterns) => setGrammarPatterns(patterns)}
+          initialGrammarPatterns={grammarPatterns}
+          selectedGrammar={selectedGrammar}
+          onToggleGrammar={handleToggleGrammar}
         />
       )}
 
       {currentStep === 'quiz' && (
         <QuizStep
           selectedWords={selectedWords}
+          grammarPatterns={selectedGrammar}
           onNext={() => setCurrentStep('shadowing')}
           onWrongAnswers={handleWrongAnswers}
         />

@@ -36,7 +36,7 @@ export default function Home() {
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
     const d = new Date(dateStr + 'T00:00:00');
-    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
   };
 
   // Step 0: 복습
@@ -44,8 +44,8 @@ export default function Home() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <header className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">JTBC 뉴스 스터디</h1>
-          <p className="text-sm text-gray-500 mt-1">뉴스로 배우는 한국어</p>
+          <h1 className="text-2xl font-bold text-gray-900">JTBC 新闻学习</h1>
+          <p className="text-sm text-gray-500 mt-1">通过新闻学韩语</p>
         </header>
 
         <ReviewStep onDone={() => setView('articles')} />
@@ -53,20 +53,20 @@ export default function Home() {
     );
   }
 
-  // Step 1: 오늘의 뉴스 목록
+  // Step 1: 今日新闻列表
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      {/* 헤더 */}
+      {/* 头部 */}
       <header className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">JTBC 뉴스 스터디</h1>
-        <p className="text-sm text-gray-500 mt-1">뉴스로 배우는 한국어</p>
+        <h1 className="text-2xl font-bold text-gray-900">JTBC 新闻学习</h1>
+        <p className="text-sm text-gray-500 mt-1">通过新闻学韩语</p>
       </header>
 
       {/* 날짜 */}
       {newsDate && (
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800">
-            {formatDate(newsDate)} 뉴스룸
+            {formatDate(newsDate)} 新闻联播
           </h2>
         </div>
       )}
@@ -88,8 +88,8 @@ export default function Home() {
       {/* 기사 없음 */}
       {!loading && !error && articles.length === 0 && (
         <div className="text-center py-20 text-gray-500">
-          <p className="text-lg mb-2">아직 수집된 뉴스가 없습니다</p>
-          <p className="text-sm">매일 밤 11시(KST)에 자동 수집됩니다</p>
+          <p className="text-lg mb-2">暂无新闻内容</p>
+          <p className="text-sm">每晚11点(韩国时间)自动采集</p>
         </div>
       )}
 
@@ -113,7 +113,7 @@ export default function Home() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TOPIC_COLORS[article.topic] || 'bg-gray-100 text-gray-600'}`}>
                     {article.topic}
                   </span>
-                  <span className="text-xs text-gray-400">{article.reporter} 기자</span>
+                  <span className="text-xs text-gray-400">{article.reporter ? `记者 ${article.reporter}` : ''}</span>
                 </div>
 
                 {/* 제목 */}
@@ -123,7 +123,7 @@ export default function Home() {
 
                 {/* 길이 표시 */}
                 <p className="text-xs text-gray-400 mt-1">
-                  {Math.round((article.endTime - article.startTime) / 60)}분 {Math.round((article.endTime - article.startTime) % 60)}초
+                  {Math.round((article.endTime - article.startTime) / 60)}分{Math.round((article.endTime - article.startTime) % 60)}秒
                 </p>
               </div>
 

@@ -45,7 +45,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
       setIsRecording(true);
       setAudioUrl(null);
     } catch {
-      alert('마이크 접근 권한이 필요합니다.');
+      alert('需要麦克风访问权限。');
     }
   }, []);
 
@@ -78,7 +78,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
   if (sentences.length === 0) {
     return (
       <div className="text-center py-20 text-gray-500">
-        <p>스크립트가 없습니다</p>
+        <p>暂无脚本内容</p>
       </div>
     );
   }
@@ -94,8 +94,8 @@ export default function ShadowingStep({ article, onComplete }: Props) {
           <div className="text-5xl font-bold text-gray-900 mb-2">
             {avgScore >= 4 ? 'A' : avgScore >= 3 ? 'B' : avgScore >= 2 ? 'C' : 'D'}
           </div>
-          <p className="text-gray-500">평균 {avgScore}/5점</p>
-          <p className="text-sm text-gray-400 mt-1">{sentences.length}개 문장 완료</p>
+          <p className="text-gray-500">平均 {avgScore}/5分</p>
+          <p className="text-sm text-gray-400 mt-1">完成 {sentences.length} 个句子</p>
         </div>
 
         {/* 문장별 결과 */}
@@ -123,16 +123,16 @@ export default function ShadowingStep({ article, onComplete }: Props) {
         {lowScores.length > 0 && (
           <div className="bg-orange-50 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-orange-700 mb-1">
-              문장 은행에 저장됨 ({lowScores.length}개)
+              已保存到句子库（{lowScores.length}个）
             </h3>
             <p className="text-xs text-orange-600">
-              점수가 낮은 문장은 복습 목록에 추가됩니다
+              低分句子已添加到复习列表
             </p>
           </div>
         )}
 
         <div className="text-center">
-          <p className="text-sm text-gray-500">오늘의 학습이 완료되었습니다!</p>
+          <p className="text-sm text-gray-500">今天的学习已完成！</p>
         </div>
       </div>
     );
@@ -147,8 +147,8 @@ export default function ShadowingStep({ article, onComplete }: Props) {
         <div className="bg-blue-50 rounded-lg p-3 mb-4 flex items-start gap-2">
           <span className="text-blue-500 shrink-0 mt-0.5">i</span>
           <div className="text-xs text-blue-700">
-            <p className="font-medium mb-1">쉐도잉 방법</p>
-            <p>문장을 읽고 → 녹음 버튼을 눌러 따라 말한 후 → 자신의 발음을 평가하세요</p>
+            <p className="font-medium mb-1">跟读方法</p>
+            <p>阅读句子 → 点击录音按钮跟读 → 自我评价发音</p>
           </div>
           <button onClick={() => setShowTip(false)} className="text-blue-400 shrink-0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -204,7 +204,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
 
       {/* 녹음 상태 */}
       {isRecording && (
-        <p className="text-center text-sm text-red-500 mb-4">녹음 중... 완료되면 정지 버튼을 누르세요</p>
+        <p className="text-center text-sm text-red-500 mb-4">录音中...完成后请点击停止按钮</p>
       )}
 
       {/* 재생 + 자가 평가 */}
@@ -212,13 +212,13 @@ export default function ShadowingStep({ article, onComplete }: Props) {
         <div className="space-y-4">
           {/* 내 녹음 재생 */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">내 녹음</p>
+            <p className="text-xs text-gray-500 mb-2">我的录音</p>
             <audio controls src={audioUrl} className="w-full" />
           </div>
 
           {/* 자가 평가 */}
           <div>
-            <p className="text-sm text-gray-600 mb-3 text-center">발음을 스스로 평가해 주세요</p>
+            <p className="text-sm text-gray-600 mb-3 text-center">请给自己的发音打分</p>
             <div className="flex gap-2 justify-center">
               {[1, 2, 3, 4, 5].map(score => (
                 <button
@@ -237,8 +237,8 @@ export default function ShadowingStep({ article, onComplete }: Props) {
               ))}
             </div>
             <div className="flex justify-between text-xs text-gray-400 mt-1 px-1">
-              <span>못함</span>
-              <span>완벽</span>
+              <span>差</span>
+              <span>完美</span>
             </div>
           </div>
 
@@ -247,7 +247,7 @@ export default function ShadowingStep({ article, onComplete }: Props) {
             onClick={() => { setAudioUrl(null); }}
             className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
           >
-            다시 녹음하기
+            重新录音
           </button>
         </div>
       )}

@@ -41,7 +41,7 @@ export default function VideoStep({ article, onNext }: Props) {
               onClick={replay}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
             >
-              다시 보기
+              重新播放
             </button>
           ) : (
             <button
@@ -49,7 +49,7 @@ export default function VideoStep({ article, onNext }: Props) {
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
               disabled={!isReady}
             >
-              {isPlaying ? '일시정지' : '재생'}
+              {isPlaying ? '暂停' : '播放'}
             </button>
           )}
         </div>
@@ -58,7 +58,7 @@ export default function VideoStep({ article, onNext }: Props) {
       {/* 스크립트 미리보기 */}
       {sentences.length > 0 && (
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">스크립트</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">脚本</h3>
           <div className="space-y-2 text-sm text-gray-700 leading-relaxed">
             {sentences.map((sentence, i) => (
               <p key={i}>{sentence}</p>
@@ -72,7 +72,7 @@ export default function VideoStep({ article, onNext }: Props) {
         onClick={onNext}
         className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
       >
-        스크립트 학습으로 →
+        进入脚本学习 →
       </button>
     </div>
   );

@@ -1,0 +1,135 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase';
+
+export const maxDuration = 300;
+
+/**
+ * GET /api/auto-ingest?date=2026-02-17&videoId=ZToYdGoUQGQ
+ *
+ * Uses the edge proxy (/api/yt-proxy) for all YouTube API calls.
+ * Edge functions run on Cloudflare Seoul PoP → bypasses geo-restriction.
+ *
+ * videoId: optional — skip search and use this video directly
+ * date: target date (default: today KST)
+ */
+export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+  }
+
+  let date = request.nextUrl.searchParams.get('date');
+  if (!date) {
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    date = kst.toISOString().split('T')[0];
+  }
+
+  const directVideoId = request.nextUrl.searchParams.get('videoId');
+  console.log(`[auto-ingest] Starting for date: ${date}${directVideoId ? ` (direct: ${directVideoId})` : ''}`);
+
+  // Build absolute URL to the edge proxy
+  const proxyUrl = new URL('/api/yt-proxy', request.url).toString();
+
+  async function callProxy(body: Record<string, unknown>) {
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  try {
+    let videoId: string;
+    let videoTitle: string = '';
+
+    if (directVideoId) {
+      videoId = directVideoId;
+    } else {
+      // Auto-search via edge proxy channel browse
+      const d = new Date(date + 'T00:00:00');
+      const yy = String(d.getFullYear()).slice(2);
+      const m = d.getMonth() + 1;
+      const dd = d.getDate();
+      const dateStr = `${yy}.${m}.${dd}`;
+
+      console.log(`[auto-ingest] Browsing JTBC channel for "${dateStr}"...`);
+      const browseResult = await callProxy({ action: 'browse', dateStr });
+
+      if (!browseResult.candidates?.length) {
+        return NextResponse.json({
+          date,
+          error: `JTBC 뉴스룸 영상을 찾지 못했습니다 (${dateStr})`,
+          articles: 0,
+          browseError: browseResult.error,
+        });
+      }
+
+      videoId = browseResult.candidates[0].id;
+      videoTitle = browseResult.candidates[0].title;
+      console.log(`[auto-ingest] Found: "${videoTitle}" [${videoId}]`);
+    }
+
+    // Check for duplicates
+    const { data: existingVideo } = await supabase
+      .from('news_videos')
+      .select('id')
+      .eq('youtube_id', videoId)
+      .single();
+
+    if (existingVideo) {
+      return NextResponse.json({ date, articles: 0, skipped: true, videoId });
+    }
+
+    // Get transcript + video info via edge proxy (runs in Seoul)
+    console.log(`[auto-ingest] Fetching transcript via edge proxy for ${videoId}...`);
+    const transcriptResult = await callProxy({ action: 'transcript', videoId });
+
+    if (transcriptResult.error || !transcriptResult.transcript?.length) {
+      return NextResponse.json({
+        date,
+        videoId,
+        error: transcriptResult.error || '자막 추출 실패',
+        playabilityStatus: transcriptResult.playabilityStatus,
+        reason: transcriptResult.reason,
+        articles: 0,
+      });
+    }
+
+    console.log(`[auto-ingest] Got ${transcriptResult.transcript.length} segments, ${transcriptResult.chapters?.length || 0} chapters`);
+
+    if (!transcriptResult.chapters?.length) {
+      return NextResponse.json({ date, videoId, error: 'YouTube 챕터 없음', articles: 0 });
+    }
+
+    // Call the existing ingest pipeline
+    const ingestUrl = new URL('/api/ingest', request.url);
+    const ingestRes = await fetch(ingestUrl.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date,
+        youtubeId: videoId,
+        videoTitle: transcriptResult.title || videoTitle,
+        durationSeconds: transcriptResult.durationSeconds,
+        chapters: transcriptResult.chapters,
+        transcript: transcriptResult.transcript,
+      }),
+    });
+
+    const result = await ingestRes.json();
+    console.log(`[auto-ingest] Result:`, result);
+
+    return NextResponse.json({
+      date,
+      videoId,
+      videoTitle: transcriptResult.title || videoTitle,
+      ...result,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[auto-ingest] Error:`, msg);
+    return NextResponse.json({ date, error: msg, articles: 0 }, { status: 500 });
+  }
+}

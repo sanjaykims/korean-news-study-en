@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS news_videos (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   youtube_id TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
+  broadcaster TEXT NOT NULL DEFAULT 'JTBC',
   broadcast_date DATE NOT NULL,
   duration_seconds INTEGER,
   thumbnail_url TEXT,

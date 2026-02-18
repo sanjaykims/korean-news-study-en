@@ -28,22 +28,23 @@ export async function POST(request: NextRequest) {
       max_tokens: 256,
       messages: [{
         role: 'user',
-        content: `한국어 단어 "${word}"를 분석해 주세요.
+        content: `请分析韩语单词"${word}"。
 
-다음 JSON 형식으로만 반환하세요 (다른 텍스트 없이):
+只返回以下JSON格式（不要其他文字）：
 {
-  "hanja": "한자 (있으면)",
-  "chinese": "대응하는 중국어 단어/표현",
-  "meaning": "한국어로 된 뜻풀이 (간단히)",
+  "hanja": "对应汉字（如有）",
+  "chinese": "对应的简体中文词汇/表达",
+  "meaning": "简体中文释义（简短）",
   "isFalseFriend": false,
-  "falseFriendNote": "한중 의미 차이 설명 (false friend인 경우만)"
+  "falseFriendNote": "中韩含义差异说明（仅在false friend时填写）"
 }
 
-규칙:
-- 한자어가 아니면 hanja는 null
-- chinese는 중국어 화자가 이해할 수 있는 대응 표현
-- isFalseFriend: 한국어와 중국어에서 같은 한자를 쓰지만 의미가 다른 경우 true
-- 고유어(순한국어)나 외래어도 chinese 번역은 제공`,
+规则：
+- 非汉字词则hanja为null
+- chinese必须使用简体中文
+- meaning必须使用简体中文
+- isFalseFriend：韩语和中文使用相同汉字但含义不同时为true
+- 固有词（纯韩语）和外来词也要提供chinese翻译`,
       }],
     });
 

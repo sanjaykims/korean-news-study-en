@@ -1,9 +1,10 @@
 // YouTube 자막 추출 — 다중 방식 (Vercel 서버 환경 호환)
-// Method 1: ANDROID Innertube (Android UA)
-// Method 2: Watch page scraping + signed caption URL
-// Method 3: Direct timedtext API
+// Method 1: youtube-transcript package (most reliable from servers)
+// Method 2: ANDROID Innertube (Android UA)
+// Method 3: Watch page scraping + signed caption URL
 
 import https from 'https';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 interface HttpResponse {
   body: string;
@@ -12,6 +13,7 @@ interface HttpResponse {
 
 const ANDROID_UA = 'com.google.android.youtube/19.09.37 (Linux; U; Android 11; en_US; sdk_gphone_x86_64 Build/RSR1.210722.013)';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const YT_CONSENT_COOKIE = 'CONSENT=YES+; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMwODI5LjA3X3AxGgJlbiACGgYIgJnsBhAB';
 
 function httpsPost(hostname: string, path: string, body: object, userAgent: string): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
@@ -24,6 +26,9 @@ function httpsPost(hostname: string, path: string, body: object, userAgent: stri
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data),
         'User-Agent': userAgent,
+        'Cookie': YT_CONSENT_COOKIE,
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/',
       },
     }, res => {
       let d = '';
@@ -42,6 +47,7 @@ function httpsGet(url: string, userAgent: string = BROWSER_UA): Promise<HttpResp
       headers: {
         'User-Agent': userAgent,
         'Accept-Language': 'ko-KR,ko;q=0.9',
+        'Cookie': YT_CONSENT_COOKIE,
       },
     }, res => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -189,7 +195,24 @@ async function tryWatchPageScraping(videoId: string): Promise<TranscriptSegment[
 export async function getTranscript(videoId: string): Promise<TranscriptSegment[]> {
   const errors: string[] = [];
 
-  // Method 1: ANDROID Innertube
+  // Method 1: youtube-transcript package (most reliable from servers)
+  try {
+    const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' });
+    if (items.length > 0) {
+      const segments = items.map(item => ({
+        text: item.text.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim(),
+        start: item.offset / 1000,
+        duration: item.duration / 1000,
+      })).filter(s => s.text);
+      console.log(`[transcript] youtube-transcript 성공: ${segments.length}개 세그먼트`);
+      return segments;
+    }
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+    console.log(`[transcript] youtube-transcript 실패: ${errors[errors.length - 1]}`);
+  }
+
+  // Method 2: ANDROID Innertube
   try {
     const segments = await tryAndroidClient(videoId);
     if (segments.length > 0) {
@@ -201,7 +224,7 @@ export async function getTranscript(videoId: string): Promise<TranscriptSegment[
     console.log(`[transcript] ANDROID 실패: ${errors[errors.length - 1]}`);
   }
 
-  // Method 2: Watch page scraping
+  // Method 3: Watch page scraping
   try {
     const segments = await tryWatchPageScraping(videoId);
     if (segments.length > 0) {

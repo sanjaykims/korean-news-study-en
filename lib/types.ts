@@ -102,7 +102,7 @@ export interface QuizQuestion {
   koreanText: string;
   correctAnswer: string;
   options: string[];
-  type: 'chinese_to_korean' | 'korean_to_chinese';
+  type: 'chinese_to_korean' | 'korean_to_chinese' | 'grammar_to_chinese' | 'chinese_to_grammar';
 }
 
 // 쉐도잉 결과

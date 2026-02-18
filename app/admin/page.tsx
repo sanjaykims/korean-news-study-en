@@ -2,283 +2,165 @@
 
 import { useState } from 'react';
 
-interface VideoResult {
-  id: string;
-  title: string;
-  channel: string;
-  duration: string;
-  durationSeconds: number;
-}
-
-// YouTube 자막 추출 (브라우저에서 직접)
-async function extractTranscript(videoId: string): Promise<{ text: string; start: number; duration: number }[]> {
-  const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      context: {
-        client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' },
-      },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }),
-  });
-
-  const playerData = await playerRes.json();
-  const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-  if (!tracks?.length) throw new Error('자막 트랙 없음');
-
-  const koTrack = tracks.find((t: { languageCode: string }) => t.languageCode === 'ko');
-  if (!koTrack) throw new Error('한국어 자막 없음');
-
-  const segments: { text: string; start: number; duration: number }[] = [];
-
-  // Try json3 format first
-  try {
-    const capRes = await fetch(koTrack.baseUrl + '&fmt=json3');
-    const capData = await capRes.json();
-    for (const ev of capData?.events || []) {
-      if (ev.segs) {
-        const text = ev.segs.map((s: { utf8?: string }) => s.utf8 || '').join('').trim();
-        if (text && text !== '\n') {
-          segments.push({
-            text,
-            start: (ev.tStartMs || 0) / 1000,
-            duration: (ev.dDurationMs || 0) / 1000,
-          });
-        }
-      }
-    }
-  } catch { /* fall through to XML */ }
-
-  // Fallback: srv3 XML
-  if (segments.length === 0) {
-    const xmlRes = await fetch(koTrack.baseUrl + '&fmt=srv3');
-    const xml = await xmlRes.text();
-    const pRe = /<p t="(\d+)" d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
-    let m: RegExpExecArray | null;
-    while ((m = pRe.exec(xml)) !== null) {
-      const text = m[3]
-        .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\n/g, ' ').trim();
-      if (text) segments.push({ text, start: parseInt(m[1]) / 1000, duration: parseInt(m[2]) / 1000 });
-    }
-  }
-
-  // Fallback: text format
-  if (segments.length === 0) {
-    const xmlRes = await fetch(koTrack.baseUrl);
-    const xml = await xmlRes.text();
-    const textRe = /<text start="([\d.]+)" dur="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/g;
-    let m: RegExpExecArray | null;
-    while ((m = textRe.exec(xml)) !== null) {
-      const text = m[3]
-        .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\n/g, ' ').trim();
-      if (text) segments.push({ text, start: parseFloat(m[1]), duration: parseFloat(m[2]) });
-    }
-  }
-
-  return segments;
-}
-
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 export default function AdminPage() {
   const [date, setDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
   });
+  const [videoId, setVideoId] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
-  const [videos, setVideos] = useState<VideoResult[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<VideoResult | null>(null);
-  const [results, setResults] = useState<{ articles: number; error?: string } | null>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [showLocalCmd, setShowLocalCmd] = useState(false);
+  const [localVideoId, setLocalVideoId] = useState('');
 
-  async function searchVideos() {
+  function extractVideoId(input: string): string {
+    const trimmed = input.trim();
+    if (!trimmed) return '';
+    const urlMatch = trimmed.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
+    if (urlMatch) return urlMatch[1];
+    if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
+    return trimmed;
+  }
+
+  async function handleIngest() {
     setLoading(true);
-    setVideos([]);
-    setSelectedVideo(null);
-    setResults(null);
-    setStatus('🔍 JTBC 뉴스 검색 중...');
+    setResult(null);
+    setShowLocalCmd(false);
+
+    const vid = extractVideoId(videoId);
+    const params = new URLSearchParams({ date });
+    if (vid) params.set('videoId', vid);
+
+    setStatus(vid
+      ? `영상 ${vid} 수집 중...`
+      : 'JTBC 뉴스룸 자동 검색 + 수집 중...'
+    );
 
     try {
-      const d = new Date(date + 'T00:00:00');
-      const dateKorean = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+      const res = await fetch(`/api/auto-ingest?${params.toString()}`);
+      const data = await res.json();
+      setResult(data);
 
-      // 여러 쿼리로 검색
-      const queries = [
-        `JTBC 뉴스룸 풀영상 ${dateKorean}`,
-        `JTBC 뉴스룸 다시보기 ${dateKorean}`,
-      ];
+      if (data.skipped) {
+        setStatus(`이미 수집된 영상입니다 (${data.videoId})`);
+      } else if (data.articles > 0) {
+        setStatus(`완료! ${data.articles}개 기사 수집 / ${data.videoTitle || ''}`);
+      } else if (data.error) {
+        // Check if it's a geo-restriction / transcript failure
+        const isGeoBlock = data.error?.includes('transcript') ||
+          data.error?.includes('LOGIN_REQUIRED') ||
+          data.error?.includes('UNPLAYABLE') ||
+          data.error?.includes('자막') ||
+          data.errors?.length > 0;
 
-      const allVideos: VideoResult[] = [];
-      const seenIds = new Set<string>();
-
-      for (const query of queries) {
-        try {
-          const res = await fetch('/api/youtube-search?q=' + encodeURIComponent(query));
-          const data = await res.json();
-          for (const v of data.videos || []) {
-            if (!seenIds.has(v.id) && v.channel.includes('JTBC') && v.title.includes('뉴스룸')) {
-              seenIds.add(v.id);
-              allVideos.push(v);
-            }
-          }
-        } catch { /* continue */ }
-      }
-
-      // 길이순 정렬 (긴 것 먼저)
-      allVideos.sort((a, b) => b.durationSeconds - a.durationSeconds);
-
-      setVideos(allVideos);
-
-      if (allVideos.length === 0) {
-        setStatus('❌ JTBC News 영상을 찾지 못했습니다');
-      } else {
-        setStatus(`✅ JTBC News 영상 ${allVideos.length}개 발견. 수집할 영상을 선택하세요.`);
+        if (isGeoBlock) {
+          setStatus('서버에서 자막 추출 실패 (지역 제한). 아래 로컬 명령어를 사용해 주세요.');
+          setShowLocalCmd(true);
+          setLocalVideoId(data.videoId || vid || '');
+        } else {
+          setStatus(`오류: ${data.error}`);
+        }
       }
     } catch (err) {
-      setStatus(`❌ 검색 오류: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(`오류: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function ingestVideo(video: VideoResult) {
-    setLoading(true);
-    setSelectedVideo(video);
-    setResults(null);
-
-    try {
-      // Step 1: 자막 추출
-      setStatus(`📝 자막 추출 중... (${video.id})`);
-      const transcript = await extractTranscript(video.id);
-
-      if (transcript.length === 0) {
-        setStatus('❌ 자막이 없습니다');
-        setLoading(false);
-        return;
-      }
-
-      setStatus(`✅ 자막 ${transcript.length}개 세그먼트. 서버로 전송 중...`);
-
-      // Step 2: 서버에 전송
-      const cronSecret = prompt('CRON_SECRET 입력:');
-      if (!cronSecret) { setStatus('취소됨'); setLoading(false); return; }
-
-      const res = await fetch('/api/ingest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cronSecret}`,
-        },
-        body: JSON.stringify({
-          date,
-          youtubeId: video.id,
-          videoTitle: video.title,
-          durationSeconds: video.durationSeconds,
-          transcript,
-        }),
-      });
-
-      const result = await res.json();
-      setResults(result);
-
-      if (result.skipped) {
-        setStatus('⏭️ 이미 처리된 영상입니다');
-      } else if (result.error) {
-        setStatus(`❌ ${result.error}`);
-      } else {
-        setStatus(`🎉 완료! ${result.articles}개 기사 수집됨`);
-      }
-    } catch (err) {
-      setStatus(`❌ 오류: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const localCommand = localVideoId
+    ? `node scripts/ingest.js ${date} ${localVideoId}`
+    : `node scripts/ingest.js ${date}`;
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-lg mx-auto">
         <h1 className="text-2xl font-bold mb-6">JTBC 뉴스룸 수집</h1>
 
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">수집 날짜</label>
-          <div className="flex gap-3">
+        <div className="bg-white rounded-xl p-6 shadow-sm mb-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">방송 날짜</label>
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className="flex-1 border rounded-lg px-3 py-2"
+              className="w-full border rounded-lg px-3 py-2 text-sm"
             />
-            <button
-              onClick={searchVideos}
-              disabled={loading}
-              className="bg-blue-600 text-white rounded-lg px-6 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading && !selectedVideo ? '검색 중...' : 'JTBC 검색'}
-            </button>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              YouTube 영상 ID 또는 URL <span className="text-gray-400">(선택)</span>
+            </label>
+            <input
+              type="text"
+              value={videoId}
+              onChange={e => setVideoId(e.target.value)}
+              placeholder="예: ZToYdGoUQGQ 또는 youtube.com/watch?v=..."
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              비워두면 자동 검색합니다.
+            </p>
+          </div>
+
+          <button
+            onClick={handleIngest}
+            disabled={loading}
+            className="w-full bg-blue-600 text-white rounded-lg px-6 py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? '수집 중...' : '수집 시작'}
+          </button>
         </div>
 
-        {/* 검색 결과 — 영상 목록 */}
-        {videos.length > 0 && (
-          <div className="bg-white rounded-xl p-6 shadow-sm mb-4">
-            <h2 className="font-semibold mb-3">JTBC News 영상 ({videos.length}개)</h2>
-            <div className="space-y-3">
-              {videos.map(v => (
-                <div
-                  key={v.id}
-                  className={`border rounded-lg p-3 cursor-pointer transition ${
-                    selectedVideo?.id === v.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => !loading && ingestVideo(v)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 mr-3">
-                      <div className="text-sm font-medium">{v.title}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {v.channel} · {formatDuration(v.durationSeconds)}
-                      </div>
-                    </div>
-                    <img
-                      src={`https://img.youtube.com/vi/${v.id}/mqdefault.jpg`}
-                      alt=""
-                      className="w-24 h-14 rounded object-cover flex-shrink-0"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 상태 */}
         {status && (
           <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
             <div className="text-sm whitespace-pre-wrap">{status}</div>
           </div>
         )}
 
-        {results && (
-          <div className="bg-blue-50 rounded-xl p-4 mb-4">
-            <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(results, null, 2)}</pre>
+        {showLocalCmd && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm mb-4">
+            <p className="text-sm font-medium text-amber-800 mb-2">
+              JTBC 영상은 한국 IP에서만 자막 추출이 가능합니다.
+            </p>
+            <p className="text-xs text-amber-700 mb-3">
+              프로젝트 폴더에서 아래 명령어를 실행해 주세요:
+            </p>
+            <div className="bg-gray-900 text-green-400 rounded-lg p-3 font-mono text-xs relative">
+              <code>{localCommand}</code>
+              <button
+                onClick={() => navigator.clipboard.writeText(localCommand)}
+                className="absolute top-2 right-2 text-gray-400 hover:text-white text-xs"
+              >
+                복사
+              </button>
+            </div>
+            <p className="text-xs text-amber-600 mt-2">
+              Node.js가 설치된 한국 IP 컴퓨터에서 실행하세요.
+            </p>
           </div>
         )}
 
-        <p className="text-xs text-gray-400 text-center">
-          채널명이 &quot;JTBC&quot;인 영상만 표시됩니다. 자막은 브라우저에서 직접 추출합니다.
-        </p>
+        {result && (
+          <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <pre className="text-xs whitespace-pre-wrap text-gray-600">{JSON.stringify(result, null, 2)}</pre>
+          </div>
+        )}
+
+        <div className="bg-gray-50 rounded-xl p-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">로컬 수집 (한국 IP 필요)</p>
+          <div className="bg-gray-900 text-green-400 rounded-lg p-3 font-mono text-xs space-y-1">
+            <div># 오늘 뉴스 자동 검색 + 수집</div>
+            <div>node scripts/ingest.js</div>
+            <div className="mt-2"># 특정 날짜</div>
+            <div>node scripts/ingest.js {date}</div>
+            <div className="mt-2"># 특정 영상 ID</div>
+            <div>node scripts/ingest.js {date} VIDEO_ID</div>
+          </div>
+        </div>
       </div>
     </div>
   );

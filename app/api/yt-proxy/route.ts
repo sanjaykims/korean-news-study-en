@@ -346,6 +346,31 @@ async function extractTranscript(videoId: string): Promise<{
   return { transcript: [], title, durationSeconds, description, chapters, method: 'NONE', errors };
 }
 
+// Check if a video title contains a date in any common format
+// dateStr is expected as "YY.MM.DD" (e.g. "26.02.19")
+function titleMatchesDate(vtitle: string, dateStr: string): boolean {
+  if (!dateStr) return true;
+  const parts = dateStr.split('.');
+  if (parts.length !== 3) return vtitle.includes(dateStr);
+  const [yy, mm, dd] = parts;
+  const y = parseInt(yy), m = parseInt(mm), d = parseInt(dd);
+  const fullYear = y < 100 ? 2000 + y : y;
+  // Try many formats JTBC might use:
+  const variants = [
+    dateStr,                                          // 26.02.19
+    `${y}.${m}.${d}`,                                 // 26.2.19
+    `${fullYear}.${mm}.${dd}`,                        // 2026.02.19
+    `${fullYear}.${m}.${d}`,                          // 2026.2.19
+    `${m}월 ${d}일`,                                  // 2월 19일
+    `${mm}월 ${dd}일`,                                // 02월 19일
+    `${fullYear}년 ${m}월 ${d}일`,                     // 2026년 2월 19일
+    `${mm}.${dd}`,                                    // 02.19
+    `${m}.${d}`,                                      // 2.19
+    `${fullYear}-${mm}-${dd}`,                        // 2026-02-19
+  ];
+  return variants.some(v => vtitle.includes(v));
+}
+
 export async function POST(request: Request) {
   const body = await request.json() as { action: string; videoId?: string; channelId?: string; dateStr?: string; maxPages?: number; params?: Record<string, unknown> };
   const { action, videoId } = body;
@@ -433,16 +458,7 @@ export async function POST(request: Request) {
             if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
             else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
 
-            // Match both zero-padded (26.02.19) and unpadded (26.2.19) date formats
-            const dateMatch = dateStr ? vtitle.includes(dateStr) || (() => {
-              const parts = dateStr.split('.');
-              if (parts.length === 3) {
-                const unpadded = `${parseInt(parts[0])}.${parseInt(parts[1])}.${parseInt(parts[2])}`;
-                return vtitle.includes(unpadded);
-              }
-              return false;
-            })() : true;
-            if (vtitle.includes('뉴스룸') && secs >= 600 && dateMatch) {
+            if (vtitle.includes('뉴스룸') && secs >= 600 && titleMatchesDate(vtitle, dateStr)) {
               candidates.push({ id, title: vtitle, durationSeconds: secs });
             }
           }
@@ -464,7 +480,6 @@ export async function POST(request: Request) {
   // ─── ACTION: search ───
   if (action === 'search') {
     const queries = (body.params as { queries?: string[] })?.queries || [];
-    const dateStr = (body.params as { dateStr?: string })?.dateStr || '';
 
     try {
       const candidates: { id: string; title: string; durationSeconds: number }[] = [];
@@ -492,16 +507,10 @@ export async function POST(request: Request) {
               if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
               else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
 
+              // Search queries already include date, so trust YouTube ranking.
+              // Only require 뉴스룸 + JTBC + sufficient duration.
               if (vtitle.includes('뉴스룸') && secs >= 600 &&
                   (vtitle.includes('JTBC') || vtitle.includes('제이티비씨'))) {
-                // If dateStr provided, also check date match
-                if (dateStr) {
-                  const dateParts = dateStr.split('.');
-                  const unpadded = dateParts.length === 3
-                    ? `${parseInt(dateParts[0])}.${parseInt(dateParts[1])}.${parseInt(dateParts[2])}`
-                    : '';
-                  if (!vtitle.includes(dateStr) && !(unpadded && vtitle.includes(unpadded))) continue;
-                }
                 candidates.push({ id, title: vtitle, durationSeconds: secs });
               }
             }

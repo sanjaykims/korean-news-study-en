@@ -7,6 +7,7 @@ const COOKIE = 'CONSENT=YES+; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2Vyd
 const ANDROID_UA = 'com.google.android.youtube/19.09.37 (Linux; U; Android 11)';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const IOS_UA = 'com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)';
+const MWEB_UA = 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyJSON = any;
@@ -105,6 +106,70 @@ function parseChapters(description: string): { title: string; startSeconds: numb
   return chapters;
 }
 
+// Build protobuf params for get_transcript API
+function encodeTranscriptParams(videoId: string): string {
+  const enc = new TextEncoder();
+  const vidBytes = enc.encode(videoId);
+  // Protobuf: field 1 (message) { field 1 (string) = videoId }
+  const inner = new Uint8Array(2 + vidBytes.length);
+  inner[0] = 0x0a; // field 1, wire type 2 (length-delimited)
+  inner[1] = vidBytes.length;
+  inner.set(vidBytes, 2);
+  const outer = new Uint8Array(2 + inner.length);
+  outer[0] = 0x0a; // field 1, wire type 2
+  outer[1] = inner.length;
+  outer.set(inner, 2);
+  return btoa(Array.from(outer, b => String.fromCharCode(b)).join(''));
+}
+
+// Parse get_transcript response into segments
+function parseTranscriptResponse(data: AnyJSON): { text: string; start: number; duration: number }[] {
+  const segments: { text: string; start: number; duration: number }[] = [];
+  try {
+    const body = data?.actions?.[0]?.updateEngagementPanelAction?.content
+      ?.transcriptRenderer?.content?.transcriptSearchPanelRenderer?.body
+      ?.transcriptSegmentListRenderer?.initialSegments;
+    if (!body) return segments;
+    for (const item of body) {
+      const seg = item?.transcriptSegmentRenderer;
+      if (seg) {
+        const text = seg.snippet?.runs?.map((r: AnyJSON) => r.text || '').join('').trim() || '';
+        const startMs = parseInt(seg.startMs || '0');
+        const endMs = parseInt(seg.endMs || '0');
+        if (text) {
+          segments.push({ text, start: startMs / 1000, duration: (endMs - startMs) / 1000 });
+        }
+      }
+    }
+  } catch { /* ignore parse errors */ }
+  return segments;
+}
+
+// Helper: try fetching captions from a player response that has caption tracks
+async function tryFetchCaptions(
+  tracks: AnyJSON[],
+  ua: string,
+  errors: string[],
+  methodName: string,
+): Promise<{ text: string; start: number; duration: number }[] | null> {
+  const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
+  // Try multiple formats
+  for (const fmt of ['srv3', 'json3', '']) {
+    const capUrl = fmt
+      ? koTrack.baseUrl + (koTrack.baseUrl.includes('fmt=') ? '' : '&fmt=' + fmt)
+      : koTrack.baseUrl;
+    try {
+      const capBody = await ytGet(capUrl, ua);
+      if (capBody && capBody.length > 100) {
+        const segments = fmt === 'json3' ? parseJson3Captions(capBody) : parseCaptionXml(capBody);
+        if (segments.length > 0) return segments;
+      }
+    } catch { /* try next format */ }
+  }
+  errors.push(`${methodName}: captions found but all formats returned empty`);
+  return null;
+}
+
 // Try multiple YouTube API clients to extract captions
 async function extractTranscript(videoId: string): Promise<{
   transcript: { text: string; start: number; duration: number }[];
@@ -121,10 +186,78 @@ async function extractTranscript(videoId: string): Promise<{
   let description = '';
   let chapters: { title: string; startSeconds: number }[] = [];
 
-  // Method 1: Watch page scraping — most reliable for geo-restricted content
+  // ─── Method 1: Direct timedtext API ───
+  // Simplest approach — direct URL, might bypass player-level geo-restriction
   try {
-    const html = await ytGet('https://www.youtube.com/watch?v=' + videoId, BROWSER_UA);
-    const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\});/);
+    for (const kind of ['asr', '']) {
+      for (const fmt of ['srv3', 'json3', 'vtt']) {
+        const params = new URLSearchParams({ v: videoId, lang: 'ko', fmt });
+        if (kind) params.set('kind', kind);
+        const url = `https://www.youtube.com/api/timedtext?${params.toString()}`;
+        const body = await ytGet(url, BROWSER_UA);
+        if (body && body.length > 100) {
+          const segments = fmt === 'json3' ? parseJson3Captions(body) : parseCaptionXml(body);
+          if (segments.length > 0) {
+            // We got captions but no metadata yet — fetch metadata separately
+            try {
+              const playerData = await ytPost('/youtubei/v1/player?prettyPrint=false', {
+                context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
+                videoId, contentCheckOk: true, racyCheckOk: true,
+              }, BROWSER_UA);
+              const details = playerData?.videoDetails || {};
+              title = details.title || '';
+              durationSeconds = parseInt(details.lengthSeconds || '0');
+              description = details.shortDescription || '';
+              chapters = parseChapters(description);
+            } catch { /* metadata optional */ }
+            return { transcript: segments, title, durationSeconds, description, chapters, method: 'TIMEDTEXT', errors };
+          }
+        }
+      }
+    }
+    errors.push('TIMEDTEXT: all direct timedtext requests returned empty');
+  } catch (e) {
+    errors.push(`TIMEDTEXT: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─── Method 2: Innertube get_transcript ───
+  // Different from player API — uses YouTube's transcript panel endpoint
+  try {
+    const params = encodeTranscriptParams(videoId);
+    const data = await ytPost('/youtubei/v1/get_transcript?prettyPrint=false', {
+      context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
+      params,
+    }, BROWSER_UA);
+    const segments = parseTranscriptResponse(data);
+    if (segments.length > 0) {
+      // Get metadata
+      try {
+        const playerData = await ytPost('/youtubei/v1/player?prettyPrint=false', {
+          context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
+          videoId, contentCheckOk: true, racyCheckOk: true,
+        }, BROWSER_UA);
+        const details = playerData?.videoDetails || {};
+        title = details.title || '';
+        durationSeconds = parseInt(details.lengthSeconds || '0');
+        description = details.shortDescription || '';
+        chapters = parseChapters(description);
+      } catch { /* metadata optional */ }
+      return { transcript: segments, title, durationSeconds, description, chapters, method: 'GET_TRANSCRIPT', errors };
+    }
+    const errDetail = data?.error?.message || JSON.stringify(data).substring(0, 120);
+    errors.push(`GET_TRANSCRIPT: no segments (${errDetail})`);
+  } catch (e) {
+    errors.push(`GET_TRANSCRIPT: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─── Method 3: Watch page scraping (with bypass params) ───
+  try {
+    const html = await ytGet(
+      `https://www.youtube.com/watch?v=${videoId}&bpctr=9999999999&has_verified=1&hl=ko&gl=KR`,
+      BROWSER_UA,
+    );
+    // Use a greedy approach to find the full JSON — match until };\n or };var
+    const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;\s*(?:var|<\/script)/);
     if (match) {
       const data = JSON.parse(match[1]);
       const details = data?.videoDetails || {};
@@ -135,24 +268,12 @@ async function extractTranscript(videoId: string): Promise<{
 
       const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
       if (tracks?.length) {
-        const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
-        // Try multiple formats
-        for (const fmt of ['srv3', 'json3', '']) {
-          const capUrl = fmt ? koTrack.baseUrl + '&fmt=' + fmt : koTrack.baseUrl;
-          const capBody = await ytGet(capUrl, BROWSER_UA);
-          if (capBody && capBody.length > 100) {
-            const segments = fmt === 'json3' ? parseJson3Captions(capBody) : parseCaptionXml(capBody);
-            if (segments.length > 0) {
-              return { transcript: segments, title, durationSeconds, description, chapters, method: 'WATCH_PAGE', errors };
-            }
-          }
-        }
-        errors.push('WATCH: captions found but all formats returned empty');
+        const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'WATCH');
+        if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'WATCH_PAGE', errors };
       } else {
         errors.push(`WATCH: playability=${data?.playabilityStatus?.status}, no caption tracks`);
       }
     } else {
-      // Check if it's a consent redirect or error page
       const hasConsent = html.includes('consent.youtube.com') || html.includes('CONSENT');
       errors.push(`WATCH: no ytInitialPlayerResponse (consent=${hasConsent}, len=${html.length})`);
     }
@@ -160,7 +281,43 @@ async function extractTranscript(videoId: string): Promise<{
     errors.push(`WATCH: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Method 2: TVHTML5_SIMPLY_EMBEDDED_PLAYER — embedded player client (less restricted)
+  // ─── Method 4: Embed page ───
+  // Embedded player has different geo-restriction rules than watch page
+  try {
+    const html = await ytGet(`https://www.youtube.com/embed/${videoId}?hl=ko&gl=KR`, BROWSER_UA);
+    // Embed page stores config in ytInitialPlayerResponse or ytcfg
+    const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;/)
+      || html.match(/"embedded_player_response":"((?:\\.|[^"])+)"/);
+    if (match) {
+      let jsonStr = match[1];
+      // Handle escaped JSON from embedded_player_response
+      if (jsonStr.includes('\\')) {
+        jsonStr = JSON.parse('"' + jsonStr + '"');
+      }
+      const data = JSON.parse(jsonStr);
+      const details = data?.videoDetails || {};
+      if (!title) {
+        title = details.title || '';
+        durationSeconds = parseInt(details.lengthSeconds || '0');
+        description = details.shortDescription || '';
+        chapters = parseChapters(description);
+      }
+
+      const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (tracks?.length) {
+        const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'EMBED');
+        if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'EMBED', errors };
+      } else {
+        errors.push(`EMBED: playability=${data?.playabilityStatus?.status}, no caption tracks`);
+      }
+    } else {
+      errors.push(`EMBED: no player response found (len=${html.length})`);
+    }
+  } catch (e) {
+    errors.push(`EMBED: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─── Method 5: TVHTML5_SIMPLY_EMBEDDED_PLAYER ───
   try {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
       context: {
@@ -182,14 +339,8 @@ async function extractTranscript(videoId: string): Promise<{
 
     const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (tracks?.length) {
-      const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
-      const capUrl = koTrack.baseUrl + (koTrack.baseUrl.includes('fmt=') ? '' : '&fmt=srv3');
-      const xml = await ytGet(capUrl, BROWSER_UA);
-      const segments = parseCaptionXml(xml);
-      if (segments.length > 0) {
-        return { transcript: segments, title, durationSeconds, description, chapters, method: 'TV_EMBEDDED', errors };
-      }
-      errors.push('TV_EMBEDDED: captions found but parsing returned empty');
+      const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'TV_EMBEDDED');
+      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'TV_EMBEDDED', errors };
     } else {
       errors.push(`TV_EMBEDDED: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
     }
@@ -197,7 +348,7 @@ async function extractTranscript(videoId: string): Promise<{
     errors.push(`TV_EMBEDDED: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Method 3: WEB client
+  // ─── Method 6: WEB client ───
   try {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
       context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
@@ -216,14 +367,8 @@ async function extractTranscript(videoId: string): Promise<{
 
     const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (tracks?.length) {
-      const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
-      const capUrl = koTrack.baseUrl + (koTrack.baseUrl.includes('fmt=') ? '' : '&fmt=srv3');
-      const xml = await ytGet(capUrl, BROWSER_UA);
-      const segments = parseCaptionXml(xml);
-      if (segments.length > 0) {
-        return { transcript: segments, title, durationSeconds, description, chapters, method: 'WEB', errors };
-      }
-      errors.push('WEB: captions found but parsing returned empty');
+      const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'WEB');
+      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'WEB', errors };
     } else {
       errors.push(`WEB: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
     }
@@ -231,7 +376,35 @@ async function extractTranscript(videoId: string): Promise<{
     errors.push(`WEB: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Method 4: ANDROID client
+  // ─── Method 7: MWEB client (mobile web) ───
+  try {
+    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
+      context: { client: { clientName: 'MWEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
+      videoId,
+      contentCheckOk: true,
+      racyCheckOk: true,
+    }, MWEB_UA);
+
+    if (!title) {
+      const details = data?.videoDetails || {};
+      title = details.title || '';
+      durationSeconds = parseInt(details.lengthSeconds || '0');
+      description = details.shortDescription || '';
+      chapters = parseChapters(description);
+    }
+
+    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (tracks?.length) {
+      const result = await tryFetchCaptions(tracks, MWEB_UA, errors, 'MWEB');
+      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'MWEB', errors };
+    } else {
+      errors.push(`MWEB: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
+    }
+  } catch (e) {
+    errors.push(`MWEB: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─── Method 8: ANDROID client ───
   try {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
       context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'ko', gl: 'KR' } },
@@ -250,14 +423,8 @@ async function extractTranscript(videoId: string): Promise<{
 
     const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (tracks?.length) {
-      const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
-      const capUrl = koTrack.baseUrl + (koTrack.baseUrl.includes('fmt=') ? '' : '&fmt=srv3');
-      const xml = await ytGet(capUrl, ANDROID_UA);
-      const segments = parseCaptionXml(xml);
-      if (segments.length > 0) {
-        return { transcript: segments, title, durationSeconds, description, chapters, method: 'ANDROID', errors };
-      }
-      errors.push('ANDROID: captions found but parsing returned empty');
+      const result = await tryFetchCaptions(tracks, ANDROID_UA, errors, 'ANDROID');
+      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'ANDROID', errors };
     } else {
       errors.push(`ANDROID: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
     }
@@ -265,7 +432,7 @@ async function extractTranscript(videoId: string): Promise<{
     errors.push(`ANDROID: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Method 5: IOS client
+  // ─── Method 9: IOS client ───
   try {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
       context: { client: { clientName: 'IOS', clientVersion: '19.09.3', deviceModel: 'iPhone14,3', hl: 'ko', gl: 'KR' } },
@@ -284,19 +451,48 @@ async function extractTranscript(videoId: string): Promise<{
 
     const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (tracks?.length) {
-      const koTrack = tracks.find((t: AnyJSON) => t.languageCode === 'ko') || tracks[0];
-      const capUrl = koTrack.baseUrl + (koTrack.baseUrl.includes('fmt=') ? '' : '&fmt=srv3');
-      const xml = await ytGet(capUrl, IOS_UA);
-      const segments = parseCaptionXml(xml);
-      if (segments.length > 0) {
-        return { transcript: segments, title, durationSeconds, description, chapters, method: 'IOS', errors };
-      }
-      errors.push('IOS: captions found but parsing returned empty');
+      const result = await tryFetchCaptions(tracks, IOS_UA, errors, 'IOS');
+      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'IOS', errors };
     } else {
       errors.push(`IOS: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
     }
   } catch (e) {
     errors.push(`IOS: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─── Method 10: Third-party Invidious instances ───
+  // Try public Invidious instances that may have Korean server access
+  const invidiousInstances = [
+    'https://vid.puffyan.us',
+    'https://invidious.fdn.fr',
+    'https://invidious.privacyredirect.com',
+  ];
+  for (const instance of invidiousInstances) {
+    try {
+      const res = await fetch(`${instance}/api/v1/captions/${videoId}`, {
+        headers: { 'User-Agent': BROWSER_UA },
+      });
+      if (!res.ok) continue;
+      const captionList = await res.json() as { captions: { label: string; language_code: string; url: string }[] };
+      const koCaption = captionList.captions?.find(c => c.language_code === 'ko')
+        || captionList.captions?.find(c => c.language_code.startsWith('ko'));
+      if (koCaption) {
+        // Fetch the actual caption content
+        const capUrl = koCaption.url.startsWith('http') ? koCaption.url : instance + koCaption.url;
+        const capRes = await fetch(capUrl + (capUrl.includes('fmt=') ? '' : '&fmt=srv3'), {
+          headers: { 'User-Agent': BROWSER_UA },
+        });
+        const capBody = await capRes.text();
+        if (capBody && capBody.length > 100) {
+          const segments = parseCaptionXml(capBody);
+          if (segments.length > 0) {
+            return { transcript: segments, title, durationSeconds, description, chapters, method: `INVIDIOUS(${new URL(instance).hostname})`, errors };
+          }
+        }
+      }
+    } catch (e) {
+      errors.push(`INVIDIOUS(${new URL(instance).hostname}): ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   return { transcript: [], title, durationSeconds, description, chapters, method: 'NONE', errors };

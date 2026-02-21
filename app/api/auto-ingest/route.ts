@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
 
   let date = request.nextUrl.searchParams.get('date');
   if (!date) {
+    // Cron runs at 01:00 KST — fetch previous day's broadcast
     const now = new Date();
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    kst.setDate(kst.getDate() - 1);
     date = kst.toISOString().split('T')[0];
   }
 

@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
 
   let date = request.nextUrl.searchParams.get('date');
   if (!date) {
+    // Cron runs at 01:00 KST — fetch previous day's broadcast
     const now = new Date();
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    kst.setDate(kst.getDate() - 1);
     date = kst.toISOString().split('T')[0];
   }
 
@@ -38,7 +40,13 @@ export async function GET(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    return res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Edge proxy returned non-JSON (timeout, crash, HTML error page)
+      return { error: `Edge proxy error (HTTP ${res.status}): ${text.substring(0, 100)}` };
+    }
   }
 
   // External transcript proxy (Cloudflare Worker or any Korean-IP service)

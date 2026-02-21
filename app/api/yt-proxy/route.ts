@@ -6,8 +6,6 @@ export const preferredRegion = ['icn1', 'hnd1']; // Seoul, Tokyo
 const COOKIE = 'CONSENT=YES+; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMwODI5LjA3X3AxGgJlbiACGgYIgJnsBhAB';
 const ANDROID_UA = 'com.google.android.youtube/19.09.37 (Linux; U; Android 11)';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const IOS_UA = 'com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)';
-const MWEB_UA = 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyJSON = any;
@@ -317,94 +315,7 @@ async function extractTranscript(videoId: string): Promise<{
     errors.push(`EMBED: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // ─── Method 5: TVHTML5_SIMPLY_EMBEDDED_PLAYER ───
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: {
-        client: { clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER', clientVersion: '2.0', hl: 'ko', gl: 'KR' },
-        thirdParty: { embedUrl: 'https://www.google.com' },
-      },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }, BROWSER_UA);
-
-    const details = data?.videoDetails || {};
-    if (!title) {
-      title = details.title || '';
-      durationSeconds = parseInt(details.lengthSeconds || '0');
-      description = details.shortDescription || '';
-      chapters = parseChapters(description);
-    }
-
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'TV_EMBEDDED');
-      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'TV_EMBEDDED', errors };
-    } else {
-      errors.push(`TV_EMBEDDED: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
-    }
-  } catch (e) {
-    errors.push(`TV_EMBEDDED: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ─── Method 6: WEB client ───
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }, BROWSER_UA);
-
-    if (!title) {
-      const details = data?.videoDetails || {};
-      title = details.title || '';
-      durationSeconds = parseInt(details.lengthSeconds || '0');
-      description = details.shortDescription || '';
-      chapters = parseChapters(description);
-    }
-
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const result = await tryFetchCaptions(tracks, BROWSER_UA, errors, 'WEB');
-      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'WEB', errors };
-    } else {
-      errors.push(`WEB: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
-    }
-  } catch (e) {
-    errors.push(`WEB: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ─── Method 7: MWEB client (mobile web) ───
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: { client: { clientName: 'MWEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }, MWEB_UA);
-
-    if (!title) {
-      const details = data?.videoDetails || {};
-      title = details.title || '';
-      durationSeconds = parseInt(details.lengthSeconds || '0');
-      description = details.shortDescription || '';
-      chapters = parseChapters(description);
-    }
-
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const result = await tryFetchCaptions(tracks, MWEB_UA, errors, 'MWEB');
-      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'MWEB', errors };
-    } else {
-      errors.push(`MWEB: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
-    }
-  } catch (e) {
-    errors.push(`MWEB: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ─── Method 8: ANDROID client ───
+  // ─── Method 5: ANDROID client (different UA, sometimes less restricted) ───
   try {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
       context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'ko', gl: 'KR' } },
@@ -430,69 +341,6 @@ async function extractTranscript(videoId: string): Promise<{
     }
   } catch (e) {
     errors.push(`ANDROID: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ─── Method 9: IOS client ───
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: { client: { clientName: 'IOS', clientVersion: '19.09.3', deviceModel: 'iPhone14,3', hl: 'ko', gl: 'KR' } },
-      videoId,
-      contentCheckOk: true,
-      racyCheckOk: true,
-    }, IOS_UA);
-
-    if (!title) {
-      const details = data?.videoDetails || {};
-      title = details.title || '';
-      durationSeconds = parseInt(details.lengthSeconds || '0');
-      description = details.shortDescription || '';
-      chapters = parseChapters(description);
-    }
-
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const result = await tryFetchCaptions(tracks, IOS_UA, errors, 'IOS');
-      if (result) return { transcript: result, title, durationSeconds, description, chapters, method: 'IOS', errors };
-    } else {
-      errors.push(`IOS: playability=${data?.playabilityStatus?.status}, reason=${(data?.playabilityStatus?.reason || '').substring(0, 80)}`);
-    }
-  } catch (e) {
-    errors.push(`IOS: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ─── Method 10: Third-party Invidious instances ───
-  // Try public Invidious instances that may have Korean server access
-  const invidiousInstances = [
-    'https://vid.puffyan.us',
-    'https://invidious.fdn.fr',
-    'https://invidious.privacyredirect.com',
-  ];
-  for (const instance of invidiousInstances) {
-    try {
-      const res = await fetch(`${instance}/api/v1/captions/${videoId}`, {
-        headers: { 'User-Agent': BROWSER_UA },
-      });
-      if (!res.ok) continue;
-      const captionList = await res.json() as { captions: { label: string; language_code: string; url: string }[] };
-      const koCaption = captionList.captions?.find(c => c.language_code === 'ko')
-        || captionList.captions?.find(c => c.language_code.startsWith('ko'));
-      if (koCaption) {
-        // Fetch the actual caption content
-        const capUrl = koCaption.url.startsWith('http') ? koCaption.url : instance + koCaption.url;
-        const capRes = await fetch(capUrl + (capUrl.includes('fmt=') ? '' : '&fmt=srv3'), {
-          headers: { 'User-Agent': BROWSER_UA },
-        });
-        const capBody = await capRes.text();
-        if (capBody && capBody.length > 100) {
-          const segments = parseCaptionXml(capBody);
-          if (segments.length > 0) {
-            return { transcript: segments, title, durationSeconds, description, chapters, method: `INVIDIOUS(${new URL(instance).hostname})`, errors };
-          }
-        }
-      }
-    } catch (e) {
-      errors.push(`INVIDIOUS(${new URL(instance).hostname}): ${e instanceof Error ? e.message : String(e)}`);
-    }
   }
 
   return { transcript: [], title, durationSeconds, description, chapters, method: 'NONE', errors };

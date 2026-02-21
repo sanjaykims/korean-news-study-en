@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       const yy = String(d.getFullYear()).slice(2);
       const m = d.getMonth() + 1;
       const dd = d.getDate();
-      const dateStr = `${yy}.${m}.${dd}`;
+      const dateStr = `${yy}.${String(m).padStart(2, '0')}.${String(dd).padStart(2, '0')}`;
 
       console.log(`[auto-ingest] Browsing JTBC channel for "${dateStr}"...`);
       const browseResult = await callProxy({ action: 'browse', dateStr });

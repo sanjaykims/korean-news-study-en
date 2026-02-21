@@ -223,7 +223,7 @@ async function main() {
     const yy = String(d.getFullYear()).slice(2);
     const m = d.getMonth() + 1;
     const dd = d.getDate();
-    const dateStr = `${yy}.${m}.${dd}`;
+    const dateStr = `${yy}.${String(m).padStart(2, "0")}.${String(dd).padStart(2, "0")}`;
 
     // Also try "2026년 2월 17일" format
     const fullDate = `${d.getFullYear()}년 ${m}월 ${dd}일`;

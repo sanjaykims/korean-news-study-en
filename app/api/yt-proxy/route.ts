@@ -433,7 +433,16 @@ export async function POST(request: Request) {
             if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
             else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
 
-            if (vtitle.includes('뉴스룸') && secs >= 600 && vtitle.includes(dateStr)) {
+            // Match both zero-padded (26.02.19) and unpadded (26.2.19) date formats
+            const dateMatch = dateStr ? vtitle.includes(dateStr) || (() => {
+              const parts = dateStr.split('.');
+              if (parts.length === 3) {
+                const unpadded = `${parseInt(parts[0])}.${parseInt(parts[1])}.${parseInt(parts[2])}`;
+                return vtitle.includes(unpadded);
+              }
+              return false;
+            })() : true;
+            if (vtitle.includes('뉴스룸') && secs >= 600 && dateMatch) {
               candidates.push({ id, title: vtitle, durationSeconds: secs });
             }
           }

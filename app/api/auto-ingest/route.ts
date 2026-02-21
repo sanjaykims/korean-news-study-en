@@ -90,9 +90,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         date,
         videoId,
+        videoTitle: transcriptResult.title || videoTitle,
         error: transcriptResult.error || '자막 추출 실패',
-        playabilityStatus: transcriptResult.playabilityStatus,
-        reason: transcriptResult.reason,
+        errors: transcriptResult.errors || [],
+        durationSeconds: transcriptResult.durationSeconds,
+        chapters: transcriptResult.chapters || [],
         articles: 0,
       });
     }

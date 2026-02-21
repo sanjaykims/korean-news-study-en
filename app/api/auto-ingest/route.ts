@@ -38,7 +38,13 @@ export async function GET(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    return res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Edge proxy returned non-JSON (timeout, crash, HTML error page)
+      return { error: `Edge proxy error (HTTP ${res.status}): ${text.substring(0, 100)}` };
+    }
   }
 
   // External transcript proxy (Cloudflare Worker or any Korean-IP service)

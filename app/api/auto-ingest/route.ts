@@ -6,8 +6,9 @@ export const maxDuration = 300;
 /**
  * GET /api/auto-ingest?date=2026-02-17&videoId=ZToYdGoUQGQ
  *
- * Uses the edge proxy (/api/yt-proxy) for all YouTube API calls.
- * Edge functions run on Cloudflare Seoul PoP → bypasses geo-restriction.
+ * Transcript extraction priority:
+ *   1. TRANSCRIPT_PROXY_URL (external proxy, e.g. Cloudflare Worker in Korea)
+ *   2. Built-in edge proxy (/api/yt-proxy on Seoul/Tokyo PoP)
  *
  * videoId: optional — skip search and use this video directly
  * date: target date (default: today KST)
@@ -38,6 +39,31 @@ export async function GET(request: NextRequest) {
       body: JSON.stringify(body),
     });
     return res.json();
+  }
+
+  // External transcript proxy (Cloudflare Worker or any Korean-IP service)
+  const transcriptProxyUrl = process.env.TRANSCRIPT_PROXY_URL;
+
+  async function callTranscriptProxy(videoId: string) {
+    if (!transcriptProxyUrl) return null;
+    try {
+      console.log(`[auto-ingest] Trying external transcript proxy: ${transcriptProxyUrl}`);
+      const res = await fetch(transcriptProxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId }),
+      });
+      const data = await res.json();
+      if (data.transcript?.length > 0) {
+        console.log(`[auto-ingest] External proxy success: ${data.transcript.length} segments via ${data.method}`);
+        return data;
+      }
+      console.log(`[auto-ingest] External proxy returned no transcript: ${data.error || 'empty'}`);
+      return data; // Return for error info even if no transcript
+    } catch (e) {
+      console.log(`[auto-ingest] External proxy failed: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
   }
 
   try {
@@ -82,21 +108,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ date, articles: 0, skipped: true, videoId });
     }
 
-    // Get transcript + video info via edge proxy (runs in Seoul)
-    console.log(`[auto-ingest] Fetching transcript via edge proxy for ${videoId}...`);
-    const transcriptResult = await callProxy({ action: 'transcript', videoId });
+    // ─── Try extracting transcript ───
+    // Priority 1: External transcript proxy (Cloudflare Worker / Korean IP)
+    // Priority 2: Built-in edge proxy (Vercel Seoul/Tokyo PoP)
+    let transcriptResult = await callTranscriptProxy(videoId);
+    const externalErrors = transcriptResult?.errors || [];
 
-    if (transcriptResult.error || !transcriptResult.transcript?.length) {
-      return NextResponse.json({
-        date,
-        videoId,
-        videoTitle: transcriptResult.title || videoTitle,
-        error: transcriptResult.error || '자막 추출 실패',
-        errors: transcriptResult.errors || [],
-        durationSeconds: transcriptResult.durationSeconds,
-        chapters: transcriptResult.chapters || [],
-        articles: 0,
-      });
+    if (!transcriptResult?.transcript?.length) {
+      console.log(`[auto-ingest] Falling back to edge proxy for ${videoId}...`);
+      const edgeResult = await callProxy({ action: 'transcript', videoId });
+      // Merge errors from both attempts
+      const allErrors = [
+        ...externalErrors.map((e: string) => `[외부프록시] ${e}`),
+        ...(edgeResult.errors || []).map((e: string) => `[엣지] ${e}`),
+      ];
+
+      if (edgeResult.transcript?.length) {
+        transcriptResult = edgeResult;
+        transcriptResult.errors = allErrors;
+      } else {
+        // Both failed — return combined error info
+        return NextResponse.json({
+          date,
+          videoId,
+          videoTitle: edgeResult.title || transcriptResult?.title || videoTitle,
+          error: edgeResult.error || transcriptResult?.error || '자막 추출 실패',
+          errors: allErrors.length > 0 ? allErrors : (edgeResult.errors || []),
+          durationSeconds: edgeResult.durationSeconds || transcriptResult?.durationSeconds,
+          chapters: edgeResult.chapters || transcriptResult?.chapters || [],
+          articles: 0,
+          hasExternalProxy: !!transcriptProxyUrl,
+        });
+      }
     }
 
     console.log(`[auto-ingest] Got ${transcriptResult.transcript.length} segments, ${transcriptResult.chapters?.length || 0} chapters`);

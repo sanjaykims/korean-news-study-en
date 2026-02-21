@@ -8,6 +8,7 @@ interface FailedResult {
   durationSeconds: number;
   chapters: { title: string; startSeconds: number }[];
   errors: string[];
+  hasExternalProxy: boolean;
 }
 
 export default function AdminPage() {
@@ -76,13 +77,14 @@ export default function AdminPage() {
           setLocalVideoId(data.videoId || vid || '');
 
           // 메타데이터가 있으면 수동 입력 모드 활성화
-          if (data.videoId && data.chapters?.length) {
+          if (data.videoId) {
             setFailedResult({
               videoId: data.videoId,
               videoTitle: data.videoTitle || '',
               durationSeconds: data.durationSeconds || 0,
-              chapters: data.chapters,
+              chapters: data.chapters || [],
               errors: data.errors || [],
+              hasExternalProxy: !!data.hasExternalProxy,
             });
           }
         } else {
@@ -290,6 +292,30 @@ export default function AdminPage() {
                 Node.js가 설치된 한국 IP 컴퓨터에서 실행하세요.
               </p>
             </div>
+
+            {/* Cloudflare Worker 프록시 설정 안내 */}
+            {failedResult && !failedResult.hasExternalProxy && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm">
+                <p className="text-sm font-medium text-indigo-800 mb-2">
+                  영구 해결: Cloudflare Worker 프록시 배포
+                </p>
+                <p className="text-xs text-indigo-600 mb-3">
+                  Vercel 서버 IP가 YouTube에서 차단됩니다. Cloudflare Worker(무료)를 배포하면 다른 IP로 우회할 수 있습니다.
+                </p>
+                <div className="bg-gray-900 text-green-400 rounded-lg p-3 font-mono text-xs space-y-1">
+                  <div className="text-gray-500"># 1. wrangler 설치 + 로그인</div>
+                  <div>npm i -g wrangler && wrangler login</div>
+                  <div className="text-gray-500 mt-2"># 2. Worker 배포</div>
+                  <div>wrangler deploy scripts/transcript-proxy-cf-worker.js \</div>
+                  <div>{'  '}--name yt-transcript-kr --compatibility-date 2024-01-01</div>
+                  <div className="text-gray-500 mt-2"># 3. Vercel 환경변수 설정</div>
+                  <div>TRANSCRIPT_PROXY_URL=https://yt-transcript-kr.YOUR.workers.dev</div>
+                </div>
+                <p className="text-xs text-indigo-500 mt-2">
+                  한 번만 설정하면 이후 자동 수집됩니다. Cloudflare 무료 (10만 req/일).
+                </p>
+              </div>
+            )}
 
             {/* 상세 오류 정보 */}
             {failedResult?.errors && failedResult.errors.length > 0 && (

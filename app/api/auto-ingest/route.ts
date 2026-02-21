@@ -91,18 +91,35 @@ export async function GET(request: NextRequest) {
       console.log(`[auto-ingest] Browsing JTBC channel for "${dateStr}"...`);
       const browseResult = await callProxy({ action: 'browse', dateStr });
 
-      if (!browseResult.candidates?.length) {
-        return NextResponse.json({
-          date,
-          error: `JTBC 뉴스룸 영상을 찾지 못했습니다 (${dateStr})`,
-          articles: 0,
-          browseError: browseResult.error,
-        });
-      }
+      if (browseResult.candidates?.length) {
+        videoId = browseResult.candidates[0].id;
+        videoTitle = browseResult.candidates[0].title;
+        console.log(`[auto-ingest] Found via browse: "${videoTitle}" [${videoId}]`);
+      } else {
+        // Fallback: YouTube search (like local ingest script)
+        const fullDate = `${d.getFullYear()}년 ${m}월 ${dd}일`;
+        const queries = [
+          `JTBC 뉴스룸 다시보기 ${dateStr}`,
+          `JTBC 뉴스룸 ${fullDate}`,
+          `JTBC 뉴스룸 풀영상 ${dateStr}`,
+        ];
+        console.log(`[auto-ingest] Browse failed, trying YouTube search...`);
+        const searchResult = await callProxy({ action: 'search', params: { queries, dateStr } });
 
-      videoId = browseResult.candidates[0].id;
-      videoTitle = browseResult.candidates[0].title;
-      console.log(`[auto-ingest] Found: "${videoTitle}" [${videoId}]`);
+        if (!searchResult.candidates?.length) {
+          return NextResponse.json({
+            date,
+            error: `JTBC 뉴스룸 영상을 찾지 못했습니다 (${dateStr})`,
+            articles: 0,
+            browseError: browseResult.error,
+            searchError: searchResult.error,
+          });
+        }
+
+        videoId = searchResult.candidates[0].id;
+        videoTitle = searchResult.candidates[0].title;
+        console.log(`[auto-ingest] Found via search: "${videoTitle}" [${videoId}]`);
+      }
     }
 
     // Check for duplicates

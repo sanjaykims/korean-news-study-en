@@ -461,6 +461,63 @@ export async function POST(request: Request) {
     }
   }
 
+  // ─── ACTION: search ───
+  if (action === 'search') {
+    const queries = (body.params as { queries?: string[] })?.queries || [];
+    const dateStr = (body.params as { dateStr?: string })?.dateStr || '';
+
+    try {
+      const candidates: { id: string; title: string; durationSeconds: number }[] = [];
+
+      for (const query of queries) {
+        const data = await ytPost('/youtubei/v1/search?prettyPrint=false', {
+          context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
+          query,
+        }, BROWSER_UA);
+
+        const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+        if (!contents) continue;
+
+        for (const sec of contents) {
+          const items = sec?.itemSectionRenderer?.contents;
+          if (!items) continue;
+          for (const item of items) {
+            const video = item?.videoRenderer;
+            if (video) {
+              const id = video.videoId as string;
+              const vtitle = video.title?.runs?.map((r: AnyJSON) => r.text).join('') || '';
+              const durText = video.lengthText?.simpleText || '';
+              const parts = durText.split(':').map(Number);
+              let secs = 0;
+              if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+              else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+
+              if (vtitle.includes('뉴스룸') && secs >= 600 &&
+                  (vtitle.includes('JTBC') || vtitle.includes('제이티비씨'))) {
+                // If dateStr provided, also check date match
+                if (dateStr) {
+                  const dateParts = dateStr.split('.');
+                  const unpadded = dateParts.length === 3
+                    ? `${parseInt(dateParts[0])}.${parseInt(dateParts[1])}.${parseInt(dateParts[2])}`
+                    : '';
+                  if (!vtitle.includes(dateStr) && !(unpadded && vtitle.includes(unpadded))) continue;
+                }
+                candidates.push({ id, title: vtitle, durationSeconds: secs });
+              }
+            }
+          }
+        }
+
+        if (candidates.length > 0) break;
+      }
+
+      candidates.sort((a, b) => b.durationSeconds - a.durationSeconds);
+      return Response.json({ candidates });
+    } catch (err) {
+      return Response.json({ error: err instanceof Error ? err.message : String(err), candidates: [] }, { status: 500 });
+    }
+  }
+
   // ─── ACTION: player ───
   if (action === 'player' && videoId) {
     const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {

@@ -346,8 +346,10 @@ async function extractTranscript(videoId: string): Promise<{
   return { transcript: [], title, durationSeconds, description, chapters, method: 'NONE', errors };
 }
 
-// Check if a video title contains a date in any common format
-// dateStr is expected as "YY.MM.DD" (e.g. "26.02.19")
+// Check if a video title contains a date in any common JTBC format.
+// dateStr is expected as "YY.MM.DD" (e.g. "26.02.19").
+// All variants must include the YEAR to avoid false matches across years
+// (e.g. "(21.04.14)" must NOT match target "26.04.14").
 function titleMatchesDate(vtitle: string, dateStr: string): boolean {
   if (!dateStr) return true;
   const parts = dateStr.split('.');
@@ -355,17 +357,14 @@ function titleMatchesDate(vtitle: string, dateStr: string): boolean {
   const [yy, mm, dd] = parts;
   const y = parseInt(yy), m = parseInt(mm), d = parseInt(dd);
   const fullYear = y < 100 ? 2000 + y : y;
-  // Try many formats JTBC might use:
   const variants = [
     dateStr,                                          // 26.02.19
-    `${y}.${m}.${d}`,                                 // 26.2.19
+    `${y}.${m}.${d}`,                                 // 26.2.19   ← JTBC default
+    `${y}.${mm}.${dd}`,                               // 26.02.19  (same as dateStr, kept for clarity)
     `${fullYear}.${mm}.${dd}`,                        // 2026.02.19
     `${fullYear}.${m}.${d}`,                          // 2026.2.19
-    `${m}월 ${d}일`,                                  // 2월 19일
-    `${mm}월 ${dd}일`,                                // 02월 19일
     `${fullYear}년 ${m}월 ${d}일`,                     // 2026년 2월 19일
-    `${mm}.${dd}`,                                    // 02.19
-    `${m}.${d}`,                                      // 2.19
+    `${fullYear}년 ${mm}월 ${dd}일`,                   // 2026년 02월 19일
     `${fullYear}-${mm}-${dd}`,                        // 2026-02-19
   ];
   return variants.some(v => vtitle.includes(v));

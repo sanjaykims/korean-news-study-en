@@ -1,8 +1,0 @@
-name = "jtbc-transcript-proxy"
-main = "worker.js"
-compatibility_date = "2026-01-01"
-
-# Smart placement routes the worker to the closest YouTube edge,
-# which for KR content is APAC (Seoul/Tokyo).
-[placement]
-mode = "smart"

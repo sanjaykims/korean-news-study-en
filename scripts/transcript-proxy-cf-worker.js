@@ -1,15 +1,19 @@
 /**
- * Cloudflare Worker — Korean YouTube transcript proxy
+ * Cloudflare Worker — JTBC transcript proxy (via Supadata)
  *
- * Deploy this to Cloudflare Workers (free tier: 100k req/day).
- * It runs on Cloudflare's Korean PoP which has different IPs
- * from Vercel, bypassing YouTube's geo-restriction.
+ * Primary: Supadata API for transcript extraction (paid third-party, reliable).
+ * Fallback: Direct YouTube scraping (kept for safety; usually fails now due to PO tokens).
+ * Metadata (title, duration, chapters) still extracted from YouTube watch page.
  *
  * Setup:
- *   1. Install wrangler: npm i -g wrangler
- *   2. Login: wrangler login
- *   3. Deploy: wrangler deploy scripts/transcript-proxy-cf-worker.js --name yt-transcript-kr --compatibility-date 2024-01-01
- *   4. Set env var in Vercel: TRANSCRIPT_PROXY_URL=https://yt-transcript-kr.<your-subdomain>.workers.dev
+ *   1. Sign up at https://supadata.ai and copy your API key
+ *   2. In Cloudflare dashboard → Workers → this worker → Settings → Variables
+ *      Add encrypted secret: SUPADATA_API_KEY = sd_...
+ *   3. Set env var in Vercel: TRANSCRIPT_PROXY_URL=https://<worker>.workers.dev
+ *
+ * Update worker code:
+ *   - Browser: paste this file into the worker editor in Cloudflare dashboard
+ *   - CLI: wrangler deploy scripts/transcript-proxy-cf-worker.js --name <worker-name>
  *
  * API:
  *   POST / with JSON body: { videoId: "L9sS-d-h81U" }
@@ -93,19 +97,116 @@ async function tryFetchCaptions(tracks, ua) {
   return null;
 }
 
-async function extractTranscript(videoId) {
+async function extractMetadata(videoId) {
+  // Get title, duration, chapters from YouTube watch page (still works for metadata).
   const errors = [];
   let title = '', durationSeconds = 0, description = '', chapters = [];
 
-  // Method 1: Watch page scraping
   try {
     const html = await ytGet('https://www.youtube.com/watch?v=' + videoId + '&bpctr=9999999999&has_verified=1&hl=ko&gl=KR');
     const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;\s*(?:var|<\/script)/);
     if (match) {
       const data = JSON.parse(match[1]);
       const d = data?.videoDetails || {};
-      title = d.title || ''; durationSeconds = parseInt(d.lengthSeconds || '0');
-      description = d.shortDescription || ''; chapters = parseChapters(description);
+      title = d.title || '';
+      durationSeconds = parseInt(d.lengthSeconds || '0');
+      description = d.shortDescription || '';
+      chapters = parseChapters(description);
+    } else {
+      errors.push('META_WATCH: no ytInitialPlayerResponse');
+    }
+  } catch (e) { errors.push('META_WATCH: ' + e.message); }
+
+  // Fallback: ANDROID client for metadata
+  if (!title || !durationSeconds) {
+    try {
+      const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
+        context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'ko', gl: 'KR' } },
+        videoId, contentCheckOk: true, racyCheckOk: true,
+      }, ANDROID_UA);
+      const d = data?.videoDetails || {};
+      if (!title) title = d.title || '';
+      if (!durationSeconds) durationSeconds = parseInt(d.lengthSeconds || '0');
+      if (!description) { description = d.shortDescription || ''; chapters = parseChapters(description); }
+    } catch (e) { errors.push('META_ANDROID: ' + e.message); }
+  }
+
+  return { title, durationSeconds, description, chapters, errors };
+}
+
+async function fetchFromSupadata(videoId, apiKey) {
+  // Supadata: GET /v1/transcript?url=...
+  // Returns 200 with content (immediate) or 202 with jobId (async polling).
+  const url = `https://api.supadata.ai/v1/transcript?url=https://www.youtube.com/watch?v=${videoId}&lang=ko`;
+  const res = await fetch(url, { headers: { 'x-api-key': apiKey } });
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+
+  if (!data) throw new Error(`Supadata returned non-JSON (HTTP ${res.status})`);
+  if (data.error) throw new Error(`Supadata error: ${data.error} (${data.message || ''})`);
+
+  // Async flow: poll job
+  if (res.status === 202 && data.jobId) {
+    return await pollSupadataJob(data.jobId, apiKey);
+  }
+
+  return data;
+}
+
+async function pollSupadataJob(jobId, apiKey) {
+  const url = `https://api.supadata.ai/v1/transcript/${jobId}`;
+  // Up to ~90s of polling (CF Worker has 30s CPU but unlimited wall clock for free tier).
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const res = await fetch(url, { headers: { 'x-api-key': apiKey } });
+    const data = await res.json();
+    if (data.status === 'completed') return data;
+    if (data.status === 'failed') throw new Error(`Supadata job failed: ${data.error || 'unknown'}`);
+  }
+  throw new Error('Supadata job timeout after 90s');
+}
+
+function supadataToSegments(data) {
+  // Supadata content format: array of { text, offset (ms), duration (ms), lang }
+  if (!Array.isArray(data?.content)) return [];
+  return data.content
+    .map(c => ({
+      text: (c.text || '').trim(),
+      start: (c.offset || 0) / 1000,
+      duration: (c.duration || 0) / 1000,
+    }))
+    .filter(s => s.text);
+}
+
+async function extractTranscript(videoId, env) {
+  const errors = [];
+
+  // Get metadata from YouTube watch page (still works)
+  const meta = await extractMetadata(videoId);
+  const { title, durationSeconds, description, chapters } = meta;
+  errors.push(...meta.errors);
+
+  // PRIMARY: Supadata API
+  if (env?.SUPADATA_API_KEY) {
+    try {
+      const data = await fetchFromSupadata(videoId, env.SUPADATA_API_KEY);
+      const segs = supadataToSegments(data);
+      if (segs.length > 0) {
+        return { transcript: segs, title, durationSeconds, description, chapters, method: 'SUPADATA', errors };
+      }
+      errors.push('SUPADATA: returned 0 segments');
+    } catch (e) { errors.push('SUPADATA: ' + e.message); }
+  } else {
+    errors.push('SUPADATA: no API key configured');
+  }
+
+  // FALLBACK METHODS (kept in case Supadata fails)
+  // Method: Watch page captions
+  try {
+    const html = await ytGet('https://www.youtube.com/watch?v=' + videoId + '&bpctr=9999999999&has_verified=1&hl=ko&gl=KR');
+    const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;\s*(?:var|<\/script)/);
+    if (match) {
+      const data = JSON.parse(match[1]);
       const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
       if (tracks?.length) {
         const segs = await tryFetchCaptions(tracks, BROWSER_UA);
@@ -114,46 +215,10 @@ async function extractTranscript(videoId) {
       } else {
         errors.push('WATCH: playability=' + (data?.playabilityStatus?.status) + ', no tracks');
       }
-    } else {
-      errors.push('WATCH: no ytInitialPlayerResponse (len=' + html.length + ')');
     }
   } catch (e) { errors.push('WATCH: ' + e.message); }
 
-  // Method 2: ANDROID client
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'ko', gl: 'KR' } },
-      videoId, contentCheckOk: true, racyCheckOk: true,
-    }, ANDROID_UA);
-    if (!title) { const d = data?.videoDetails || {}; title = d.title || ''; durationSeconds = parseInt(d.lengthSeconds || '0'); description = d.shortDescription || ''; chapters = parseChapters(description); }
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const segs = await tryFetchCaptions(tracks, ANDROID_UA);
-      if (segs) return { transcript: segs, title, durationSeconds, description, chapters, method: 'ANDROID', errors };
-      errors.push('ANDROID: tracks found but empty');
-    } else {
-      errors.push('ANDROID: playability=' + (data?.playabilityStatus?.status));
-    }
-  } catch (e) { errors.push('ANDROID: ' + e.message); }
-
-  // Method 3: WEB client
-  try {
-    const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
-      context: { client: { clientName: 'WEB', clientVersion: '2.20260101.00.00', hl: 'ko', gl: 'KR' } },
-      videoId, contentCheckOk: true, racyCheckOk: true,
-    }, BROWSER_UA);
-    if (!title) { const d = data?.videoDetails || {}; title = d.title || ''; durationSeconds = parseInt(d.lengthSeconds || '0'); description = d.shortDescription || ''; chapters = parseChapters(description); }
-    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) {
-      const segs = await tryFetchCaptions(tracks, BROWSER_UA);
-      if (segs) return { transcript: segs, title, durationSeconds, description, chapters, method: 'WEB', errors };
-      errors.push('WEB: tracks found but empty');
-    } else {
-      errors.push('WEB: playability=' + (data?.playabilityStatus?.status));
-    }
-  } catch (e) { errors.push('WEB: ' + e.message); }
-
-  // Method 4: Direct timedtext API
+  // Method: Direct timedtext API
   try {
     for (const kind of ['asr', '']) {
       for (const fmt of ['srv3', 'json3']) {
@@ -173,7 +238,7 @@ async function extractTranscript(videoId) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     // CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' } });
@@ -187,7 +252,7 @@ export default {
       const { videoId } = await request.json();
       if (!videoId) return Response.json({ error: 'videoId required' }, { status: 400 });
 
-      const result = await extractTranscript(videoId);
+      const result = await extractTranscript(videoId, env);
       return Response.json(result, {
         status: result.transcript.length > 0 ? 200 : 404,
         headers: { 'Access-Control-Allow-Origin': '*' },

@@ -44,7 +44,9 @@ export type EventType =
   // Shadowing
   | 'shadowing_record'
   | 'shadowing_score'
-  | 'shadowing_complete';
+  | 'shadowing_complete'
+  // Report
+  | 'report_generated';
 
 export function logEvent(
   eventType: EventType,

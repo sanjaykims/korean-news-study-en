@@ -7,6 +7,7 @@ import VideoStep from '@/components/VideoStep';
 import ScriptStep from '@/components/ScriptStep';
 import QuizStep from '@/components/QuizStep';
 import ShadowingStep from '@/components/ShadowingStep';
+import ReportButton from '@/components/ReportButton';
 
 const STEPS: { key: StudyStep; label: string }[] = [
   { key: 'video', label: '观看视频' },
@@ -186,15 +187,16 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-6">
-        <a href="/" className="text-gray-400 hover:text-gray-600">
+        <a href="/" className="text-gray-400 hover:text-gray-600 flex-shrink-0">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </a>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{article.title}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-bold text-gray-900 truncate">{article.title}</h1>
           <p className="text-xs text-gray-500">{article.reporter ? `记者 ${article.reporter}` : ''}</p>
         </div>
+        <ReportButton article={article} articleId={params.articleId} selectedWords={selectedWords} />
       </div>
 
       {/* 단계 탭 */}

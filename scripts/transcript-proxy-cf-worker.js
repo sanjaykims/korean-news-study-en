@@ -7,9 +7,10 @@
  *
  * Setup:
  *   1. Sign up at https://supadata.ai and copy your API key
- *   2. In Cloudflare dashboard → Workers → this worker → Settings → Variables
- *      Add encrypted secret: SUPADATA_API_KEY = sd_...
- *   3. Set env var in Vercel: TRANSCRIPT_PROXY_URL=https://<worker>.workers.dev
+ *   2. Get YouTube Data API v3 key from https://console.cloud.google.com
+ *   3. In Cloudflare dashboard → Workers → this worker → Settings → Variables
+ *      Add secrets: SUPADATA_API_KEY = sd_...  and  YOUTUBE_API_KEY = AIza...
+ *   4. Set env var in Vercel: TRANSCRIPT_PROXY_URL=https://<worker>.workers.dev
  *
  * Update worker code:
  *   - Browser: paste this file into the worker editor in Cloudflare dashboard
@@ -97,27 +98,48 @@ async function tryFetchCaptions(tracks, ua) {
   return null;
 }
 
-async function extractMetadata(videoId) {
-  // Get title, duration, chapters from YouTube watch page (still works for metadata).
+async function extractMetadata(videoId, env) {
   const errors = [];
   let title = '', durationSeconds = 0, description = '', chapters = [];
 
-  try {
-    const html = await ytGet('https://www.youtube.com/watch?v=' + videoId + '&bpctr=9999999999&has_verified=1&hl=ko&gl=KR');
-    const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;\s*(?:var|<\/script)/);
-    if (match) {
-      const data = JSON.parse(match[1]);
-      const d = data?.videoDetails || {};
-      title = d.title || '';
-      durationSeconds = parseInt(d.lengthSeconds || '0');
-      description = d.shortDescription || '';
-      chapters = parseChapters(description);
-    } else {
-      errors.push('META_WATCH: no ytInitialPlayerResponse');
-    }
-  } catch (e) { errors.push('META_WATCH: ' + e.message); }
+  // PRIMARY: YouTube Data API v3 (official, reliable, free)
+  if (env?.YOUTUBE_API_KEY) {
+    try {
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${env.YOUTUBE_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const item = data?.items?.[0];
+      if (item) {
+        title = item.snippet?.title || '';
+        description = item.snippet?.description || '';
+        chapters = parseChapters(description);
+        const dur = item.contentDetails?.duration || '';
+        const dm = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (dm) durationSeconds = (parseInt(dm[1] || 0) * 3600) + (parseInt(dm[2] || 0) * 60) + parseInt(dm[3] || 0);
+      } else {
+        errors.push('YT_DATA_API: video not found');
+      }
+    } catch (e) { errors.push('YT_DATA_API: ' + e.message); }
+  }
 
-  // Fallback: ANDROID client for metadata
+  // FALLBACK: Watch page scraping
+  if (!title || !durationSeconds) {
+    try {
+      const html = await ytGet('https://www.youtube.com/watch?v=' + videoId + '&bpctr=9999999999&has_verified=1&hl=ko&gl=KR');
+      const match = html.match(/var ytInitialPlayerResponse\s*=\s*(\{[\s\S]+?\})\s*;\s*(?:var|<\/script)/);
+      if (match) {
+        const data = JSON.parse(match[1]);
+        const d = data?.videoDetails || {};
+        if (!title) title = d.title || '';
+        if (!durationSeconds) durationSeconds = parseInt(d.lengthSeconds || '0');
+        if (!description) { description = d.shortDescription || ''; chapters = parseChapters(description); }
+      } else {
+        errors.push('META_WATCH: no ytInitialPlayerResponse');
+      }
+    } catch (e) { errors.push('META_WATCH: ' + e.message); }
+  }
+
+  // FALLBACK: ANDROID client
   if (!title || !durationSeconds) {
     try {
       const data = await ytPost('/youtubei/v1/player?prettyPrint=false', {
@@ -181,8 +203,8 @@ function supadataToSegments(data) {
 async function extractTranscript(videoId, env) {
   const errors = [];
 
-  // Get metadata from YouTube watch page (still works)
-  const meta = await extractMetadata(videoId);
+  // Get metadata (YouTube Data API → watch page → ANDROID client)
+  const meta = await extractMetadata(videoId, env);
   const { title, durationSeconds, description, chapters } = meta;
   errors.push(...meta.errors);
 

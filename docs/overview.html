@@ -227,7 +227,7 @@
 <h2><span class="num">3</span> Daily Ingestion Flow</h2>
 <ol class="steps">
   <li><span class="step-num">1</span><div class="step-text"><b>Cron triggers</b> at 01:00 KST → calls <code>/api/auto-ingest</code></div></li>
-  <li><span class="step-num">2</span><div class="step-text"><b>Searches YouTube</b> for yesterday's JTBC 뉴스룸 다시보기 — strict filter on target date in title <code>(YY.M.DD)</code> to reject old/unrelated videos</div></li>
+  <li><span class="step-num">2</span><div class="step-text"><b>Searches YouTube</b> for yesterday's JTBC 뉴스룸 다시보기 — strict filter requires <b>year-prefixed</b> date in title (e.g. <code>26.4.14</code>, <code>2026.04.14</code>) to prevent cross-year false matches with old videos</div></li>
   <li><span class="step-num">3</span><div class="step-text"><b>Calls Cloudflare Worker</b> with the video ID</div></li>
   <li><span class="step-num">4</span><div class="step-text"><b>Worker fetches metadata</b> (title, chapters) via YouTube Data API</div></li>
   <li><span class="step-num">5</span><div class="step-text"><b>Worker fetches transcript</b> via Supadata API</div></li>
@@ -272,7 +272,8 @@
     1. Check <a href="https://yaofang-news-study.vercel.app/api/articles">/api/articles</a> — if it returns <code>fetch failed</code>, Supabase paused. Unpause from dashboard.<br><br>
     2. If error says <code>다시보기를 찾지 못했습니다</code>: JTBC hasn't uploaded the replay yet (2-4 day lag is normal). Wait a couple days and retry — never override with a manual videoId unless you're sure it's the right broadcast.<br><br>
     3. If errors mention <code>SUPADATA</code> or <code>YT_DATA_API</code>: an API key expired. Generate a new one and update Cloudflare Worker secret.<br><br>
-    4. If a date is in Supabase but missing from the calendar: the <code>/api/dates</code> route must use <code>force-dynamic</code> + admin client. Already fixed — never let anyone "optimize" it back to cached.
+    4. If a date is in Supabase but missing from the calendar: the <code>/api/dates</code> route must use <code>force-dynamic</code> + admin client. Already fixed — never let anyone "optimize" it back to cached.<br><br>
+    5. If manual ingest picks the wrong (old) video: <code>titleMatchesDate()</code> in <code>yt-proxy</code> uses <b>year-prefixed variants only</b> (e.g. <code>26.4.14</code>, <code>2026년 4월 14일</code>). Year-less formats like <code>4.14</code> were removed because they caused cross-year false positives. Never re-add year-less date variants.
   </div>
 </div>
 
@@ -286,7 +287,7 @@
 </div>
 
 <footer>
-  Last updated 2026-05-11 · v3<br>
+  Last updated 2026-05-11 · v4<br>
   Single-user · zero monthly cost · ~5 min recovery time
 </footer>
 

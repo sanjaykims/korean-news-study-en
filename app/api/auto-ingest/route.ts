@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
         if (!searchResult.candidates?.length) {
           return NextResponse.json({
             date,
-            error: `JTBC 뉴스룸 영상을 찾지 못했습니다 (${dateStr})`,
+            error: `JTBC 뉴스룸 ${dateStr} 다시보기를 찾지 못했습니다. JTBC는 보통 방송 후 2-4일 뒤에 풀영상을 업로드합니다 — 며칠 후 다시 시도하세요.`,
             articles: 0,
             browseError: browseResult.error,
             searchError: searchResult.error,

@@ -479,10 +479,13 @@ export async function POST(request: Request) {
 
   // ─── ACTION: search ───
   if (action === 'search') {
-    const queries = (body.params as { queries?: string[] })?.queries || [];
+    const params = (body.params as { queries?: string[]; dateStr?: string }) || {};
+    const queries = params.queries || [];
+    const dateStr = params.dateStr || body.dateStr || '';
 
     try {
       const candidates: { id: string; title: string; durationSeconds: number }[] = [];
+      const seen = new Set<string>();
 
       for (const query of queries) {
         const data = await ytPost('/youtubei/v1/search?prettyPrint=false', {
@@ -500,6 +503,7 @@ export async function POST(request: Request) {
             const video = item?.videoRenderer;
             if (video) {
               const id = video.videoId as string;
+              if (seen.has(id)) continue;
               const vtitle = video.title?.runs?.map((r: AnyJSON) => r.text).join('') || '';
               const durText = video.lengthText?.simpleText || '';
               const parts = durText.split(':').map(Number);
@@ -507,10 +511,12 @@ export async function POST(request: Request) {
               if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
               else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
 
-              // Search queries already include date, so trust YouTube ranking.
-              // Only require 뉴스룸 + JTBC + sufficient duration.
+              // STRICT: title must contain target date. YouTube search ranking is not
+              // trustworthy — for dates with no upload yet it returns old viral videos.
               if (vtitle.includes('뉴스룸') && secs >= 600 &&
-                  (vtitle.includes('JTBC') || vtitle.includes('제이티비씨'))) {
+                  (vtitle.includes('JTBC') || vtitle.includes('제이티비씨')) &&
+                  titleMatchesDate(vtitle, dateStr)) {
+                seen.add(id);
                 candidates.push({ id, title: vtitle, durationSeconds: secs });
               }
             }

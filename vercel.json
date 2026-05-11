@@ -3,6 +3,10 @@
     {
       "path": "/api/auto-ingest",
       "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/keepalive",
+      "schedule": "0 0 */3 * *"
     }
   ],
   "functions": {

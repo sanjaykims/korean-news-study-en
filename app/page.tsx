@@ -120,8 +120,8 @@ export default function Home() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <header className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">JTBC 新闻学习</h1>
-            <p className="text-sm text-gray-500 mt-1">通过新闻学韩语</p>
+            <h1 className="text-2xl font-bold text-gray-900">SRS 复习</h1>
+            <p className="text-sm text-gray-500 mt-1">间隔重复 · Spaced Repetition</p>
           </div>
           <button
             onClick={() => setView('articles')}
@@ -144,12 +144,20 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-gray-900">JTBC 新闻学习</h1>
           <p className="text-sm text-gray-500 mt-1">通过新闻学韩语</p>
         </div>
-        <button
-          onClick={() => setView('review')}
-          className="text-sm px-4 py-2 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
-        >
-          复习单词
-        </button>
+        <div className="flex gap-2">
+          <a
+            href="/stats"
+            className="text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors font-medium"
+          >
+            统计
+          </a>
+          <button
+            onClick={() => setView('review')}
+            className="text-sm px-3 py-2 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
+          >
+            SRS复习
+          </button>
+        </div>
       </header>
 
       {/* 달력 */}

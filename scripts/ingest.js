@@ -258,6 +258,16 @@ async function main() {
   const transcript = await getTranscript(videoId);
   console.log(`  Got ${transcript.length} transcript segments`);
 
+  // Extract actual broadcast date from video title (e.g. "(26.3.26)" → "2026-03-26")
+  const titleDateMatch = title.match(/\((\d{2})\.(\d{1,2})\.(\d{1,2})\)/);
+  if (titleDateMatch) {
+    const actualDate = `${2000 + parseInt(titleDateMatch[1])}-${String(titleDateMatch[2]).padStart(2, "0")}-${String(titleDateMatch[3]).padStart(2, "0")}`;
+    if (actualDate !== date) {
+      console.log(`  Broadcast date corrected: ${date} → ${actualDate} (from title)`);
+      date = actualDate;
+    }
+  }
+
   // Step 3: Send to server
   console.log(`Sending to ${SITE}...`);
   const result = await postToSite("/api/ingest", {

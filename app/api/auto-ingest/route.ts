@@ -74,6 +74,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  function extractBroadcastDate(title: string): string | null {
+    const match = title.match(/\((\d{2})\.(\d{1,2})\.(\d{1,2})\)/);
+    if (!match) return null;
+    const year = 2000 + parseInt(match[1]);
+    const month = String(match[2]).padStart(2, '0');
+    const day = String(match[3]).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   try {
     let videoId: string;
     let videoTitle: string = '';
@@ -173,15 +182,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ date, videoId, error: 'YouTube 챕터 없음', articles: 0 });
     }
 
+    // Extract actual broadcast date from video title (e.g. "(26.3.26)" → "2026-03-26")
+    const finalTitle = transcriptResult.title || videoTitle;
+    const actualDate = extractBroadcastDate(finalTitle) || date;
+    if (actualDate !== date) {
+      console.log(`[auto-ingest] Broadcast date corrected: ${date} → ${actualDate} (from title)`);
+    }
+
     // Call the existing ingest pipeline
     const ingestUrl = new URL('/api/ingest', request.url);
     const ingestRes = await fetch(ingestUrl.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        date,
+        date: actualDate,
         youtubeId: videoId,
-        videoTitle: transcriptResult.title || videoTitle,
+        videoTitle: finalTitle,
         durationSeconds: transcriptResult.durationSeconds,
         chapters: transcriptResult.chapters,
         transcript: transcriptResult.transcript,
@@ -192,9 +208,9 @@ export async function GET(request: NextRequest) {
     console.log(`[auto-ingest] Result:`, result);
 
     return NextResponse.json({
-      date,
+      date: actualDate,
       videoId,
-      videoTitle: transcriptResult.title || videoTitle,
+      videoTitle: finalTitle,
       ...result,
     });
   } catch (err) {

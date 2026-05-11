@@ -278,3 +278,66 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({ status: 'ok', message: 'Use /admin page to ingest JTBC 뉴스룸' });
 }
+
+/**
+ * DELETE /api/ingest
+ * Body: { youtubeId: "xxxxx" }
+ * 영상과 관련 기사, 학습 데이터를 모두 삭제
+ */
+export async function DELETE(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const { youtubeId } = body as { youtubeId: string };
+
+  if (!youtubeId) {
+    return NextResponse.json({ error: 'youtubeId required' }, { status: 400 });
+  }
+
+  try {
+    // 영상 UUID 조회
+    const { data: video } = await supabase
+      .from('news_videos')
+      .select('id')
+      .eq('youtube_id', youtubeId)
+      .single();
+
+    if (!video) {
+      return NextResponse.json({ error: `Video not found: ${youtubeId}` }, { status: 404 });
+    }
+
+    // 해당 영상의 기사 ID 목록
+    const { data: articles } = await supabase
+      .from('news_articles')
+      .select('id')
+      .eq('video_id', video.id);
+
+    const articleIds = (articles || []).map(a => a.id);
+
+    if (articleIds.length > 0) {
+      // 하위 테이블 정리 (CASCADE 없는 FK들)
+      await supabase.from('study_sessions').delete().in('article_id', articleIds);
+      await supabase.from('sentence_bank').delete().in('source_article_id', articleIds);
+      await supabase.from('vocabulary_log').delete().in('source_article_id', articleIds);
+    }
+
+    // news_videos 삭제 → news_articles CASCADE 삭제
+    const { error: deleteError } = await supabase
+      .from('news_videos')
+      .delete()
+      .eq('id', video.id);
+
+    if (deleteError) {
+      return NextResponse.json({ error: `삭제 실패: ${deleteError.message}` }, { status: 500 });
+    }
+
+    console.log(`[ingest] Deleted video ${youtubeId} and ${articleIds.length} articles`);
+    return NextResponse.json({ deleted: true, youtubeId, articlesRemoved: articleIds.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

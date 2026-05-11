@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>야오팡 — Service Overview</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --card: #161616;
+    --card-2: #1f1f1f;
+    --border: #2a2a2a;
+    --text: #f0f0f0;
+    --text-dim: #999;
+    --accent: #f59e0b;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --pink: #ec4899;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
+  header {
+    padding: 20px 0 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { margin: 32px 0 12px; font-size: 17px; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  h2 .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    background: var(--accent); color: #000;
+    border-radius: 50%; font-size: 12px; font-weight: 700;
+  }
+  .subtitle { color: var(--text-dim); margin: 0; font-size: 13px; }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin: 16px 0 0;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 8px; text-align: center;
+  }
+  .stat .v { font-size: 20px; font-weight: 700; color: var(--green); }
+  .stat .l { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin: 8px 0;
+  }
+  .card .head {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 15px;
+  }
+  .card .body {
+    color: var(--text-dim); font-size: 13.5px; margin-top: 6px;
+  }
+  .card .tag {
+    display: inline-block; font-size: 10px; padding: 2px 7px;
+    border-radius: 4px; margin-left: 6px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .tag-free { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+  .tag-paid { background: rgba(245, 158, 11, 0.15); color: var(--accent); }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-green { background: var(--green); }
+  .dot-blue { background: var(--blue); }
+  .dot-purple { background: var(--purple); }
+  .dot-pink { background: var(--pink); }
+  .dot-orange { background: var(--accent); }
+  .dot-red { background: var(--red); }
+
+  /* Architecture diagram */
+  .arch {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 14px;
+    font-size: 12px; line-height: 1.45;
+  }
+  .arch-row {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; margin: 6px 0; flex-wrap: wrap;
+  }
+  .box {
+    background: var(--card-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px;
+    font-weight: 500; font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .box.user { background: rgba(168, 85, 247, 0.12); border-color: var(--purple); color: var(--purple); }
+  .box.app { background: rgba(59, 130, 246, 0.12); border-color: var(--blue); color: var(--blue); }
+  .box.db { background: rgba(34, 197, 94, 0.12); border-color: var(--green); color: var(--green); }
+  .box.cf { background: rgba(245, 158, 11, 0.12); border-color: var(--accent); color: var(--accent); }
+  .box.ext { background: rgba(236, 72, 153, 0.12); border-color: var(--pink); color: var(--pink); }
+  .arrow {
+    color: var(--text-dim); font-size: 14px; user-select: none;
+  }
+  .arrow.v { transform: rotate(90deg); display: inline-block; }
+
+  /* Flow steps */
+  .steps { margin: 8px 0; padding-left: 0; list-style: none; }
+  .steps li {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin: 6px 0;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .steps li .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; flex-shrink: 0;
+    background: var(--card-2); border: 1px solid var(--border);
+    border-radius: 50%; font-size: 11px; font-weight: 600;
+    color: var(--accent);
+  }
+  .steps li .step-text { flex: 1; font-size: 13.5px; }
+  .steps li .step-text b { color: var(--text); }
+  .steps li .step-text code {
+    background: var(--card-2); padding: 1px 5px; border-radius: 3px;
+    font-size: 11.5px; color: var(--accent);
+  }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td {
+    text-align: left; padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--text-dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.right { text-align: right; }
+  td .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .pill-green { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+  .pill-orange { background: rgba(245, 158, 11, 0.15); color: var(--accent); }
+
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  a { color: var(--blue); text-decoration: none; }
+  a:active { opacity: 0.7; }
+  .url {
+    display: block; background: var(--card-2);
+    padding: 8px 10px; border-radius: 6px;
+    font-size: 12px; word-break: break-all;
+    margin: 4px 0; color: var(--accent);
+  }
+
+  footer {
+    margin-top: 40px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 12px; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>야오팡 News Study</h1>
+  <p class="subtitle">JTBC 뉴스룸 기반 한국어 학습 플랫폼 · 1인용</p>
+  <div class="stats">
+    <div class="stat"><div class="v">~30</div><div class="l">videos/mo</div></div>
+    <div class="stat"><div class="v">$0</div><div class="l">running cost</div></div>
+    <div class="stat"><div class="v">5</div><div class="l">services</div></div>
+  </div>
+</header>
+
+<h2><span class="num">1</span> Architecture</h2>
+<div class="arch">
+  <div class="arch-row"><div class="box user">📱 You (phone)</div></div>
+  <div class="arch-row"><span class="arrow">↓</span></div>
+  <div class="arch-row">
+    <div class="box app">Vercel · Next.js app</div>
+  </div>
+  <div class="arch-row"><span class="arrow">↓ reads/writes</span></div>
+  <div class="arch-row">
+    <div class="box db">Supabase · Postgres</div>
+  </div>
+  <div class="arch-row" style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
+    <div class="box app">Vercel cron</div>
+    <span class="arrow">→</span>
+    <div class="box cf">Cloudflare Worker</div>
+  </div>
+  <div class="arch-row"><span class="arrow">↓ fetches</span></div>
+  <div class="arch-row">
+    <div class="box ext">Supadata</div>
+    <div class="box ext">YouTube Data API</div>
+  </div>
+</div>
+
+<h2><span class="num">2</span> Services</h2>
+<div class="card">
+  <div class="head"><span class="dot dot-blue"></span> Vercel <span class="tag tag-free">FREE</span></div>
+  <div class="body">Hosts the Next.js app + serverless API routes. Runs daily cron at 01:00 KST.</div>
+</div>
+<div class="card">
+  <div class="head"><span class="dot dot-green"></span> Supabase <span class="tag tag-free">FREE</span></div>
+  <div class="body">Postgres database storing videos, articles, vocabulary, study sessions. Keepalive cron pings it every 3 days to prevent pausing.</div>
+</div>
+<div class="card">
+  <div class="head"><span class="dot dot-orange"></span> Cloudflare Worker <span class="tag tag-free">FREE</span></div>
+  <div class="body"><code>yt-transcript-kr</code> — proxies YouTube requests from an APAC PoP. Routes transcripts via Supadata, metadata via YouTube Data API.</div>
+</div>
+<div class="card">
+  <div class="head"><span class="dot dot-pink"></span> Supadata <span class="tag tag-free">FREE</span></div>
+  <div class="body">YouTube transcript API. 100 free requests/month — your usage is ~30/month, well under limit.</div>
+</div>
+<div class="card">
+  <div class="head"><span class="dot dot-pink"></span> YouTube Data API v3 <span class="tag tag-free">FREE</span></div>
+  <div class="body">Official Google API for video metadata (title, description, duration). 10,000 quota/day — you use ~30/day.</div>
+</div>
+<div class="card">
+  <div class="head"><span class="dot dot-red"></span> Anthropic Claude API <span class="tag tag-paid">PAID</span></div>
+  <div class="body">Used in the app for topic classification, sub-splitting long chapters, quiz generation, word analysis. Pay-per-use.</div>
+</div>
+
+<h2><span class="num">3</span> Daily Ingestion Flow</h2>
+<ol class="steps">
+  <li><span class="step-num">1</span><div class="step-text"><b>Cron triggers</b> at 01:00 KST → calls <code>/api/auto-ingest</code></div></li>
+  <li><span class="step-num">2</span><div class="step-text"><b>Searches YouTube</b> for yesterday's JTBC 뉴스룸 다시보기 video</div></li>
+  <li><span class="step-num">3</span><div class="step-text"><b>Calls Cloudflare Worker</b> with the video ID</div></li>
+  <li><span class="step-num">4</span><div class="step-text"><b>Worker fetches metadata</b> (title, chapters) via YouTube Data API</div></li>
+  <li><span class="step-num">5</span><div class="step-text"><b>Worker fetches transcript</b> via Supadata API</div></li>
+  <li><span class="step-num">6</span><div class="step-text"><b>Splits into articles</b> using YouTube chapters as boundaries</div></li>
+  <li><span class="step-num">7</span><div class="step-text"><b>Claude classifies topics</b> (정치/경제/사회/국제 etc.)</div></li>
+  <li><span class="step-num">8</span><div class="step-text"><b>Saves to Supabase</b> — articles appear on your calendar</div></li>
+</ol>
+
+<h2><span class="num">4</span> Study Flow</h2>
+<ol class="steps">
+  <li><span class="step-num">A</span><div class="step-text"><b>VideoStep</b> — watch JTBC clip with timestamp</div></li>
+  <li><span class="step-num">B</span><div class="step-text"><b>ScriptStep</b> — read transcript, tap words for hanja + Chinese</div></li>
+  <li><span class="step-num">C</span><div class="step-text"><b>QuizStep</b> — bidirectional Chinese↔Korean translation drill</div></li>
+  <li><span class="step-num">D</span><div class="step-text"><b>ShadowingStep</b> — record yourself, get pronunciation score</div></li>
+</ol>
+
+<h2><span class="num">5</span> Key URLs</h2>
+<a class="url" href="https://yaofang-news-study.vercel.app">yaofang-news-study.vercel.app</a>
+<a class="url" href="https://yaofang-news-study.vercel.app/admin">/admin — manual ingest</a>
+<a class="url" href="https://dash.cloudflare.com">dash.cloudflare.com → yt-transcript-kr</a>
+<a class="url" href="https://supabase.com/dashboard">supabase.com/dashboard</a>
+<a class="url" href="https://supadata.ai">supadata.ai · API dashboard</a>
+
+<h2><span class="num">6</span> Monthly Cost</h2>
+<div class="card" style="padding: 4px 16px;">
+  <table>
+    <tr><th>Service</th><th class="right">Cost</th></tr>
+    <tr><td>Vercel hosting</td><td class="right"><span class="pill pill-green">FREE</span></td></tr>
+    <tr><td>Supabase DB</td><td class="right"><span class="pill pill-green">FREE</span></td></tr>
+    <tr><td>Cloudflare Worker</td><td class="right"><span class="pill pill-green">FREE</span></td></tr>
+    <tr><td>Supadata</td><td class="right"><span class="pill pill-green">FREE</span></td></tr>
+    <tr><td>YouTube API</td><td class="right"><span class="pill pill-green">FREE</span></td></tr>
+    <tr><td>Claude API</td><td class="right"><span class="pill pill-orange">~$1-3</span></td></tr>
+  </table>
+</div>
+
+<h2><span class="num">7</span> Failure Recovery</h2>
+<div class="card">
+  <div class="head">If content stops appearing:</div>
+  <div class="body">
+    1. Check <a href="https://yaofang-news-study.vercel.app/api/articles">/api/articles</a> — if it returns <code>fetch failed</code>, Supabase paused. Unpause from dashboard.<br><br>
+    2. If pipeline runs but no articles: JTBC hasn't uploaded the full replay yet (2-4 day lag).<br><br>
+    3. If errors mention <code>SUPADATA</code> or <code>YT_DATA_API</code>: an API key expired. Generate a new one and update Cloudflare Worker secret.
+  </div>
+</div>
+
+<footer>
+  Last updated 2026-05-11<br>
+  Single-user · zero monthly cost · ~5 min recovery time
+</footer>
+
+</div>
+</body>
+</html>

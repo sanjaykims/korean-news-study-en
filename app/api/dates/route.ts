@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/dates — 콘텐츠가 있는 날짜 목록 반환
 export async function GET() {
   const supabase = getSupabaseClient();

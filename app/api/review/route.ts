@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/review
 // 복습할 단어 5개 반환 (vocabulary_log에서 mastery 낮은 순)
 export async function GET() {

@@ -227,7 +227,7 @@
 <h2><span class="num">3</span> Daily Ingestion Flow</h2>
 <ol class="steps">
   <li><span class="step-num">1</span><div class="step-text"><b>Cron triggers</b> at 01:00 KST → calls <code>/api/auto-ingest</code></div></li>
-  <li><span class="step-num">2</span><div class="step-text"><b>Searches YouTube</b> for yesterday's JTBC 뉴스룸 다시보기 video</div></li>
+  <li><span class="step-num">2</span><div class="step-text"><b>Searches YouTube</b> for yesterday's JTBC 뉴스룸 다시보기 — strict filter on target date in title <code>(YY.M.DD)</code> to reject old/unrelated videos</div></li>
   <li><span class="step-num">3</span><div class="step-text"><b>Calls Cloudflare Worker</b> with the video ID</div></li>
   <li><span class="step-num">4</span><div class="step-text"><b>Worker fetches metadata</b> (title, chapters) via YouTube Data API</div></li>
   <li><span class="step-num">5</span><div class="step-text"><b>Worker fetches transcript</b> via Supadata API</div></li>
@@ -270,7 +270,7 @@
   <div class="head">If content stops appearing:</div>
   <div class="body">
     1. Check <a href="https://yaofang-news-study.vercel.app/api/articles">/api/articles</a> — if it returns <code>fetch failed</code>, Supabase paused. Unpause from dashboard.<br><br>
-    2. If pipeline runs but no articles: JTBC hasn't uploaded the full replay yet (2-4 day lag).<br><br>
+    2. If error says <code>다시보기를 찾지 못했습니다</code>: JTBC hasn't uploaded the replay yet (2-4 day lag is normal). Wait a couple days and retry — never override with a manual videoId unless you're sure it's the right broadcast.<br><br>
     3. If errors mention <code>SUPADATA</code> or <code>YT_DATA_API</code>: an API key expired. Generate a new one and update Cloudflare Worker secret.<br><br>
     4. If a date is in Supabase but missing from the calendar: the <code>/api/dates</code> route must use <code>force-dynamic</code> + admin client. Already fixed — never let anyone "optimize" it back to cached.
   </div>
@@ -286,7 +286,7 @@
 </div>
 
 <footer>
-  Last updated 2026-05-11 · v2<br>
+  Last updated 2026-05-11 · v3<br>
   Single-user · zero monthly cost · ~5 min recovery time
 </footer>
 

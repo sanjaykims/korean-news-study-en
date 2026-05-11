@@ -231,9 +231,10 @@
   <li><span class="step-num">3</span><div class="step-text"><b>Calls Cloudflare Worker</b> with the video ID</div></li>
   <li><span class="step-num">4</span><div class="step-text"><b>Worker fetches metadata</b> (title, chapters) via YouTube Data API</div></li>
   <li><span class="step-num">5</span><div class="step-text"><b>Worker fetches transcript</b> via Supadata API</div></li>
-  <li><span class="step-num">6</span><div class="step-text"><b>Splits into articles</b> using YouTube chapters as boundaries</div></li>
-  <li><span class="step-num">7</span><div class="step-text"><b>Claude classifies topics</b> (정치/경제/사회/국제 etc.)</div></li>
-  <li><span class="step-num">8</span><div class="step-text"><b>Saves to Supabase</b> — articles appear on your calendar</div></li>
+  <li><span class="step-num">6</span><div class="step-text"><b>Extracts actual broadcast date</b> from title pattern <code>(YY.M.DD)</code> — JTBC often uploads replays days late</div></li>
+  <li><span class="step-num">7</span><div class="step-text"><b>Splits into articles</b> using YouTube chapters as boundaries</div></li>
+  <li><span class="step-num">8</span><div class="step-text"><b>Claude classifies topics</b> (정치/경제/사회/국제 etc.)</div></li>
+  <li><span class="step-num">9</span><div class="step-text"><b>Saves to Supabase</b> — articles appear on your calendar under the correct date</div></li>
 </ol>
 
 <h2><span class="num">4</span> Study Flow</h2>
@@ -270,12 +271,22 @@
   <div class="body">
     1. Check <a href="https://yaofang-news-study.vercel.app/api/articles">/api/articles</a> — if it returns <code>fetch failed</code>, Supabase paused. Unpause from dashboard.<br><br>
     2. If pipeline runs but no articles: JTBC hasn't uploaded the full replay yet (2-4 day lag).<br><br>
-    3. If errors mention <code>SUPADATA</code> or <code>YT_DATA_API</code>: an API key expired. Generate a new one and update Cloudflare Worker secret.
+    3. If errors mention <code>SUPADATA</code> or <code>YT_DATA_API</code>: an API key expired. Generate a new one and update Cloudflare Worker secret.<br><br>
+    4. If a date is in Supabase but missing from the calendar: the <code>/api/dates</code> route must use <code>force-dynamic</code> + admin client. Already fixed — never let anyone "optimize" it back to cached.
+  </div>
+</div>
+
+<h2><span class="num">8</span> Dev Automation</h2>
+<div class="card">
+  <div class="head">Claude can now ship end-to-end</div>
+  <div class="body">
+    A GitHub Personal Access Token is stored in Claude's session memory, scoped to this repo with <code>contents</code> + <code>pull-requests</code> write. Claude can push to a <code>claude/*</code> branch, open a PR, and merge it via API in one go — no manual GitHub step needed.<br><br>
+    Token expires per GitHub's max policy (1 year). If Claude reports "Bad credentials", regenerate at <a href="https://github.com/settings/personal-access-tokens">github.com/settings/personal-access-tokens</a>.
   </div>
 </div>
 
 <footer>
-  Last updated 2026-05-11<br>
+  Last updated 2026-05-11 · v2<br>
   Single-user · zero monthly cost · ~5 min recovery time
 </footer>
 

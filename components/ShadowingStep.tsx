@@ -105,6 +105,27 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
     }
   };
 
+  const finishEarly = useCallback(() => {
+    if (results.length === 0) {
+      setIsDone(true);
+      onComplete([]);
+      return;
+    }
+    setIsDone(true);
+    onComplete(results);
+
+    const avgScore = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length);
+    const lowScoreCount = results.filter(r => r.score <= 2).length;
+    logEvent('shadowing_complete', {
+      avgScore,
+      totalSentences: results.length,
+      skippedSentences: sentences.length - results.length,
+      lowScoreCount,
+      endedEarly: true,
+      sentenceScores: results.map(r => ({ index: r.sentenceIndex, score: r.score })),
+    }, articleId);
+  }, [results, sentences.length, articleId, onComplete]);
+
   if (sentences.length === 0) {
     return (
       <div className="text-center py-20 text-gray-500">
@@ -114,7 +135,10 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
   }
 
   if (isDone) {
-    const avgScore = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length);
+    const completedCount = results.length;
+    const avgScore = completedCount > 0
+      ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / completedCount)
+      : 0;
     const lowScores = results.filter(r => r.score <= 2);
 
     return (
@@ -122,10 +146,10 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
         {/* 종합 결과 */}
         <div className="text-center mb-8">
           <div className="text-5xl font-bold text-gray-900 mb-2">
-            {avgScore >= 4 ? 'A' : avgScore >= 3 ? 'B' : avgScore >= 2 ? 'C' : 'D'}
+            {completedCount === 0 ? '—' : avgScore >= 4 ? 'A' : avgScore >= 3 ? 'B' : avgScore >= 2 ? 'C' : 'D'}
           </div>
-          <p className="text-gray-500">平均 {avgScore}/5分</p>
-          <p className="text-sm text-gray-400 mt-1">完成 {sentences.length} 个句子</p>
+          <p className="text-gray-500">{completedCount > 0 ? `平均 ${avgScore}/5分` : '未练习'}</p>
+          <p className="text-sm text-gray-400 mt-1">完成 {completedCount}/{sentences.length} 个句子</p>
         </div>
 
         {/* 문장별 결과 */}
@@ -188,7 +212,7 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
         </div>
       )}
 
-      {/* 진행 바 */}
+      {/* 진행 바 + 종료 버튼 */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -196,7 +220,13 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
             style={{ width: `${((currentIndex + 1) / sentences.length) * 100}%` }}
           />
         </div>
-        <span className="text-xs text-gray-400">{currentIndex + 1}/{sentences.length}</span>
+        <span className="text-xs text-gray-400 shrink-0">{currentIndex + 1}/{sentences.length}</span>
+        <button
+          onClick={finishEarly}
+          className="shrink-0 text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+        >
+          结束练习
+        </button>
       </div>
 
       {/* 현재 문장 */}

@@ -40,9 +40,18 @@ export interface NewsArticle {
   thumbnailUrl: string;
   // 원본 전사 세그먼트 (타임스탬프 포함)
   transcriptSegments?: { text: string; start: number; end: number }[];
-  // Claude가 교정한 전체 스크립트
+  // Claude가 교정한 전체 스크립트 (레거시 — 평문)
   proofreadScript?: string;
+  // 난이도별 재작성 본문
+  rewrites?: {
+    beginner?: string;
+    intermediate?: string;
+    advanced?: string;
+  };
 }
+
+// 학습자 난이도 레벨
+export type StudyLevel = 'original' | 'beginner' | 'intermediate' | 'advanced';
 
 // 기사 목록 아이템 (홈페이지용)
 export interface ArticleListItem {

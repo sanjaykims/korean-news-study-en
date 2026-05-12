@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/articles/[id]
 // 개별 기사 상세 반환 (스크립트 학습용)
 export async function GET(
@@ -36,10 +38,25 @@ export async function GET(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const row = data as Record<string, any>;
 
-  // 전사 세그먼트 처리
   let transcriptSegments: { text: string; start: number; end: number }[] | undefined;
   if (row.transcript_original && Array.isArray(row.transcript_original)) {
     transcriptSegments = row.transcript_original;
+  }
+
+  // transcript_proofread 는 다중 난이도 JSON 또는 plain string(레거시)
+  let rewrites: { beginner?: string; intermediate?: string; advanced?: string } | undefined;
+  let legacyProofread: string | undefined;
+  if (row.transcript_proofread) {
+    try {
+      const parsed = JSON.parse(row.transcript_proofread);
+      if (parsed?.beginner || parsed?.intermediate || parsed?.advanced) {
+        rewrites = parsed;
+      } else {
+        legacyProofread = row.transcript_proofread;
+      }
+    } catch {
+      legacyProofread = row.transcript_proofread;
+    }
   }
 
   const article = {
@@ -53,8 +70,11 @@ export async function GET(
     newsDate: row.news_videos?.broadcast_date || '',
     thumbnailUrl: row.news_videos?.thumbnail_url || '',
     transcriptSegments,
-    proofreadScript: row.transcript_proofread || undefined,
+    proofreadScript: legacyProofread,
+    rewrites,
   };
 
-  return NextResponse.json({ article });
+  return NextResponse.json({ article }, {
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  });
 }

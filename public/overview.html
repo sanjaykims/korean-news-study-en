@@ -240,13 +240,25 @@
 <h2><span class="num">4</span> Study Flow</h2>
 <ol class="steps">
   <li><span class="step-num">A</span><div class="step-text"><b>VideoStep</b> — watch JTBC clip with timestamp</div></li>
-  <li><span class="step-num">B</span><div class="step-text"><b>ScriptStep</b> — read transcript, tap words for hanja + Chinese</div></li>
+  <li><span class="step-num">B</span><div class="step-text"><b>ScriptStep</b> — read transcript, tap words for hanja + Chinese. <b>Level switcher</b> (原文 / 初级 / 中级 / 高级) lets you read the same news at TOPIK 1–6 difficulty. Rewrites are Claude-generated, news-register preserved (date markers, quote attribution, numbers, titles all retained), and cached in DB per article.</div></li>
   <li><span class="step-num">C</span><div class="step-text"><b>QuizStep</b> — bidirectional Chinese↔Korean translation drill</div></li>
   <li><span class="step-num">D</span><div class="step-text"><b>ShadowingStep</b> — record yourself, get pronunciation score. <b>结束练习</b> button lets you end early at any point — partial results are saved and vocabulary is persisted.</div></li>
   <li><span class="step-num">R</span><div class="step-text"><b>报告 PDF</b> button (study page header) — generates a downloadable A4 PDF: header (date · title · topic · reporter), full proofread script, selected vocabulary table with hanja + Chinese, and the local generation timestamp. Every download fires a <code>report_generated</code> event (user · article · timestamp · word count) into <code>learning_events</code>.</div></li>
 </ol>
 
-<h2><span class="num">5</span> SRS Review System</h2>
+<h2><span class="num">5</span> Multi-Level Rewrites</h2>
+<div class="card">
+  <div class="head"><span class="dot dot-orange"></span> News-register difficulty levels</div>
+  <div class="body">
+    On ScriptStep, tap <b>原文 / 初级 / 中级 / 高级</b> to read the same JTBC news at 4 difficulty levels.<br><br>
+    <b>Generation:</b> on-demand via <code>POST /api/rewrite</code> → Claude Sonnet 4.5. First view costs ~10 s and ~$0.01; cached forever in <code>news_articles.transcript_proofread</code> as JSON <code>{beginner, intermediate, advanced}</code>. Re-opens are instant.<br><br>
+    <b>News authenticity:</b> the prompt mandates preserving date markers, numbers, place names, quote attributions (<code>"…"라고 말했습니다</code>), and 선수/기자 titles at <i>every</i> level. Only vocabulary and grammatical density change.<br><br>
+    <b>Level targets:</b> beginner ≈ TOPIK 1–2 (단문, 기본 문법), intermediate ≈ TOPIK 3–4 (연결어미, 적당한 한자어), advanced ≈ TOPIK 5–6 (보도 문체, 복합 문법). Original = unmodified anchor transcript.<br><br>
+    Schema-free: rewrites are JSON-encoded into the existing <code>transcript_proofread</code> TEXT column. No migration required.
+  </div>
+</div>
+
+<h2><span class="num">6</span> SRS Review System</h2>
 <div class="card">
   <div class="head"><span class="dot dot-purple"></span> Spaced Repetition (간격 반복)</div>
   <div class="body">
@@ -258,7 +270,7 @@
   </div>
 </div>
 
-<h2><span class="num">6</span> Stats Dashboard</h2>
+<h2><span class="num">7</span> Stats Dashboard</h2>
 <div class="card">
   <div class="head"><span class="dot dot-green"></span> /stats — Learning Analytics</div>
   <div class="body">
@@ -271,7 +283,7 @@
   </div>
 </div>
 
-<h2><span class="num">7</span> Key URLs</h2>
+<h2><span class="num">8</span> Key URLs</h2>
 <a class="url" href="https://yaofang-news-study.vercel.app">yaofang-news-study.vercel.app</a>
 <a class="url" href="https://yaofang-news-study.vercel.app/stats">/stats — learning statistics dashboard</a>
 <a class="url" href="https://yaofang-news-study.vercel.app/admin">/admin — manual ingest</a>
@@ -279,7 +291,7 @@
 <a class="url" href="https://supabase.com/dashboard">supabase.com/dashboard</a>
 <a class="url" href="https://supadata.ai">supadata.ai · API dashboard</a>
 
-<h2><span class="num">8</span> Monthly Cost</h2>
+<h2><span class="num">9</span> Monthly Cost</h2>
 <div class="card" style="padding: 4px 16px;">
   <table>
     <tr><th>Service</th><th class="right">Cost</th></tr>
@@ -292,7 +304,7 @@
   </table>
 </div>
 
-<h2><span class="num">9</span> Failure Recovery</h2>
+<h2><span class="num">10</span> Failure Recovery</h2>
 <div class="card">
   <div class="head">If content stops appearing:</div>
   <div class="body">
@@ -304,7 +316,7 @@
   </div>
 </div>
 
-<h2><span class="num">10</span> Dev Automation</h2>
+<h2><span class="num">11</span> Dev Automation</h2>
 <div class="card">
   <div class="head">Claude can now ship end-to-end</div>
   <div class="body">
@@ -314,7 +326,7 @@
 </div>
 
 <footer>
-  Last updated 2026-05-11 · v7<br>
+  Last updated 2026-05-12 · v8<br>
   Single-user · zero monthly cost · ~5 min recovery time
 </footer>
 

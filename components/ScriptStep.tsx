@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import type { NewsArticle, SelectedItem, GrammarPattern, WordOrigin } from '@/lib/types';
+import { useState, useRef, useEffect } from 'react';
+import type { NewsArticle, SelectedItem, GrammarPattern, WordOrigin, StudyLevel } from '@/lib/types';
 import { logEvent } from '@/lib/events';
+
+const LEVEL_LABELS: Record<StudyLevel, { zh: string; ko: string; color: string }> = {
+  original: { zh: '原文', ko: '원문', color: 'bg-gray-800 text-white' },
+  beginner: { zh: '初级', ko: '초급', color: 'bg-green-500 text-white' },
+  intermediate: { zh: '中级', ko: '중급', color: 'bg-yellow-500 text-white' },
+  advanced: { zh: '高级', ko: '고급', color: 'bg-red-500 text-white' },
+};
 
 interface Props {
   article: NewsArticle;
@@ -46,9 +53,62 @@ export default function ScriptStep({
   const [grammarLoading, setGrammarLoading] = useState(false);
   const [expandedGrammar, setExpandedGrammar] = useState<number | null>(null);
 
-  // 교정된 스크립트 또는 원본
-  const script = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
+  // 난이도 선택 — 사용 가능하면 중급으로 기본 설정
+  const [level, setLevel] = useState<StudyLevel>(() => {
+    if (article.rewrites?.intermediate) return 'intermediate';
+    return 'original';
+  });
+  const [rewrites, setRewrites] = useState(article.rewrites || {});
+  const [rewriteLoading, setRewriteLoading] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+
+  // 원문 텍스트
+  const originalText = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
+
+  // 현재 선택된 난이도의 텍스트
+  const script = level === 'original'
+    ? originalText
+    : (rewrites[level] || originalText);
+
   const sentences = script.split(/(?<=[.!?])\s+/).filter(Boolean);
+
+  // 난이도 변경 시 — 없으면 Claude에게 생성 요청
+  const handleLevelChange = async (newLevel: StudyLevel) => {
+    setLevel(newLevel);
+    setRewriteError(null);
+    logEvent('level_toggle', { from: level, to: newLevel }, articleId);
+
+    if (newLevel === 'original') return;
+    if (rewrites[newLevel]) return;
+
+    setRewriteLoading(true);
+    try {
+      const res = await fetch('/api/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleId }),
+      });
+      const data = await res.json();
+      if (data.rewrites) {
+        setRewrites(data.rewrites);
+      } else {
+        setRewriteError(data.error || '재작성 실패');
+      }
+    } catch {
+      setRewriteError('네트워크 오류');
+    } finally {
+      setRewriteLoading(false);
+    }
+  };
+
+  // Grammar/word selections invalidated when level changes — clear popup
+  useEffect(() => {
+    setPopup(null);
+    setGrammarPatterns([]);
+    visibleSentenceRef.current = 0;
+    sentenceStartRef.current = Date.now();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level]);
 
   // 문법 패턴 분석 — 사용자가 버튼 클릭 시에만 호출
   const analyzeGrammar = () => {
@@ -214,6 +274,45 @@ export default function ScriptStep({
 
   return (
     <div onClick={handleBackgroundClick}>
+      {/* 난이도 스위처 */}
+      <div className="mb-3 flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        {(['original', 'beginner', 'intermediate', 'advanced'] as StudyLevel[]).map((lv) => {
+          const isActive = lv === level;
+          const isAvailable = lv === 'original' || !!rewrites[lv];
+          return (
+            <button
+              key={lv}
+              onClick={(e) => { e.stopPropagation(); handleLevelChange(lv); }}
+              disabled={rewriteLoading}
+              className={`flex-1 text-xs py-1.5 rounded-md transition-all font-medium ${
+                isActive
+                  ? LEVEL_LABELS[lv].color + ' shadow-sm'
+                  : 'text-gray-600 hover:bg-white'
+              }`}
+              title={isAvailable ? '' : '점击生成 / 클릭하여 생성'}
+            >
+              {LEVEL_LABELS[lv].zh}
+              {!isAvailable && (
+                <span className="ml-1 opacity-50">✨</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {rewriteLoading && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
+          <div className="w-3 h-3 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+          AI 正在为您重新撰写新闻… (约 10 秒)
+        </div>
+      )}
+
+      {rewriteError && (
+        <div className="mb-3 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md">
+          {rewriteError}
+        </div>
+      )}
+
       {/* 语法分析按钮 */}
       {grammarPatterns.length === 0 && (
         <div className="mb-3">

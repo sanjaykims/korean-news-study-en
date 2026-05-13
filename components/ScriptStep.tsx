@@ -4,11 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import type { NewsArticle, SelectedItem, GrammarPattern, WordOrigin, StudyLevel } from '@/lib/types';
 import { logEvent } from '@/lib/events';
 
-const LEVEL_LABELS: Record<StudyLevel, { zh: string; ko: string; color: string }> = {
-  original: { zh: '原文', ko: '원문', color: 'bg-gray-800 text-white' },
-  beginner: { zh: '初级', ko: '초급', color: 'bg-green-500 text-white' },
-  intermediate: { zh: '中级', ko: '중급', color: 'bg-yellow-500 text-white' },
-  advanced: { zh: '高级', ko: '고급', color: 'bg-red-500 text-white' },
+const LEVEL_LABELS: Record<StudyLevel, { label: string; ko: string; color: string }> = {
+  original: { label: 'Original', ko: '원문', color: 'bg-gray-800 text-white' },
+  beginner: { label: 'Beginner', ko: '초급', color: 'bg-green-500 text-white' },
+  intermediate: { label: 'Intermediate', ko: '중급', color: 'bg-yellow-500 text-white' },
+  advanced: { label: 'Advanced', ko: '고급', color: 'bg-red-500 text-white' },
 };
 
 interface Props {
@@ -42,18 +42,15 @@ export default function ScriptStep({
     y: number;
   } | null>(null);
 
-  // Sentence read time tracking
   const visibleSentenceRef = useRef<number>(0);
   const sentenceStartRef = useRef<number>(Date.now());
 
-  // 문법 패턴 — restore from parent if previously loaded
   const [grammarPatterns, setGrammarPatterns] = useState<(GrammarPattern & { sentenceIndex: number })[]>(
     () => (initialGrammarPatterns as (GrammarPattern & { sentenceIndex: number })[]) || []
   );
   const [grammarLoading, setGrammarLoading] = useState(false);
   const [expandedGrammar, setExpandedGrammar] = useState<number | null>(null);
 
-  // 난이도 선택 — 사용 가능하면 중급으로 기본 설정
   const [level, setLevel] = useState<StudyLevel>(() => {
     if (article.rewrites?.intermediate) return 'intermediate';
     return 'original';
@@ -62,17 +59,14 @@ export default function ScriptStep({
   const [rewriteLoading, setRewriteLoading] = useState(false);
   const [rewriteError, setRewriteError] = useState<string | null>(null);
 
-  // 원문 텍스트
   const originalText = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
 
-  // 현재 선택된 난이도의 텍스트
   const script = level === 'original'
     ? originalText
     : (rewrites[level] || originalText);
 
   const sentences = script.split(/(?<=[.!?])\s+/).filter(Boolean);
 
-  // 난이도 변경 시 — 없으면 Claude에게 생성 요청
   const handleLevelChange = async (newLevel: StudyLevel) => {
     setLevel(newLevel);
     setRewriteError(null);
@@ -92,16 +86,15 @@ export default function ScriptStep({
       if (data.rewrites) {
         setRewrites(data.rewrites);
       } else {
-        setRewriteError(data.error || '재작성 실패');
+        setRewriteError(data.error || 'Rewrite failed');
       }
     } catch {
-      setRewriteError('네트워크 오류');
+      setRewriteError('Network error');
     } finally {
       setRewriteLoading(false);
     }
   };
 
-  // Grammar/word selections invalidated when level changes — clear popup
   useEffect(() => {
     setPopup(null);
     setGrammarPatterns([]);
@@ -110,7 +103,6 @@ export default function ScriptStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
 
-  // 문법 패턴 분석 — 사용자가 버튼 클릭 시에만 호출
   const analyzeGrammar = () => {
     if (!script || grammarPatterns.length > 0 || grammarLoading) return;
     setGrammarLoading(true);
@@ -130,7 +122,6 @@ export default function ScriptStep({
       .finally(() => setGrammarLoading(false));
   };
 
-  // 문장별 문법 패턴 매핑 — 패턴 텍스트로 실제 포함 문장 찾기
   const patternToSentence = (p: GrammarPattern & { sentenceIndex: number }): number => {
     const cleanPattern = p.pattern.replace(/^[-~]/, '');
     for (let i = 0; i < sentences.length; i++) {
@@ -148,18 +139,16 @@ export default function ScriptStep({
   const patternsForSentence = (si: number) =>
     grammarPatterns.filter(p => patternToSentence(p) === si);
 
-  // Find anchor token index for inline badge placement
   const findPatternAnchor = (pattern: GrammarPattern, tokens: string[]): number => {
     const cleaned = pattern.pattern
       .replace(/^[~\-]+/, '')
-      .replace(/\([^)]*\)/g, '')  // strip (으), (이), (서) etc.
-      .replace(/[/]/g, '')        // strip slashes like ㄴ/은
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[/]/g, '')
       .trim();
 
     const words = cleaned.split(/\s+/).filter(w => /[가-힣]/.test(w));
     if (words.length === 0) return -1;
 
-    // Try from last word to first — last word is most specific
     for (let w = words.length - 1; w >= 0; w--) {
       const anchor = words[w].replace(/[^가-힣]/g, '');
       if (!anchor) continue;
@@ -175,14 +164,11 @@ export default function ScriptStep({
     return -1;
   };
 
-  // Log sentence read time when user moves to a different sentence
   const logSentenceReadTime = (newSentenceIndex: number) => {
     if (newSentenceIndex !== visibleSentenceRef.current) {
       const durationMs = Date.now() - sentenceStartRef.current;
       const prevSentence = sentences[visibleSentenceRef.current] || '';
       const wordCount = prevSentence.split(/\s+/).filter(Boolean).length;
-      // Count hanja words (words with corresponding Chinese characters are harder to distinguish client-side,
-      // so we use a heuristic: count words that are likely hanja based on character patterns)
       const hanjaWordCount = prevSentence.split(/\s+/).filter(w => /^[가-힣]{2,}$/.test(w)).length;
       logEvent('sentence_read_time', {
         sentenceIndex: visibleSentenceRef.current,
@@ -196,7 +182,6 @@ export default function ScriptStep({
     }
   };
 
-  // 단어 클릭 처리
   const handleWordClick = async (word: string, event: React.MouseEvent, sentenceIndex?: number) => {
     if (sentenceIndex !== undefined) logSentenceReadTime(sentenceIndex);
     const rect = (event.target as HTMLElement).getBoundingClientRect();
@@ -221,7 +206,6 @@ export default function ScriptStep({
           falseFriendNote: data.falseFriendNote || undefined,
         } : null);
 
-        // Log word_click with wordOrigin
         logEvent('word_click', {
           word,
           wordOrigin: data.wordOrigin || null,
@@ -231,7 +215,6 @@ export default function ScriptStep({
           falseFriendNote: data.falseFriendNote || null,
         }, articleId);
 
-        // Log false_friend_seen if applicable
         if (data.isFalseFriend) {
           logEvent('false_friend_seen', {
             word,
@@ -243,7 +226,7 @@ export default function ScriptStep({
         }
       }
     } catch {
-      // 분석 실패
+      // analysis failed
     } finally {
       setAnalysisLoading(false);
     }
@@ -274,7 +257,7 @@ export default function ScriptStep({
 
   return (
     <div onClick={handleBackgroundClick}>
-      {/* 난이도 스위처 */}
+      {/* Level switcher */}
       <div className="mb-3 flex items-center gap-1 bg-gray-100 rounded-lg p-1">
         {(['original', 'beginner', 'intermediate', 'advanced'] as StudyLevel[]).map((lv) => {
           const isActive = lv === level;
@@ -289,9 +272,9 @@ export default function ScriptStep({
                   ? LEVEL_LABELS[lv].color + ' shadow-sm'
                   : 'text-gray-600 hover:bg-white'
               }`}
-              title={isAvailable ? '' : '점击生成 / 클릭하여 생성'}
+              title={isAvailable ? '' : 'Click to generate'}
             >
-              {LEVEL_LABELS[lv].zh}
+              {LEVEL_LABELS[lv].label}
               {!isAvailable && (
                 <span className="ml-1 opacity-50">✨</span>
               )}
@@ -303,7 +286,7 @@ export default function ScriptStep({
       {rewriteLoading && (
         <div className="mb-3 flex items-center gap-2 text-xs text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
           <div className="w-3 h-3 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          AI 正在为您重新撰写新闻… (约 10 秒)
+          AI is rewriting the news for you... (~10 sec)
         </div>
       )}
 
@@ -313,7 +296,7 @@ export default function ScriptStep({
         </div>
       )}
 
-      {/* 语法分析按钮 */}
+      {/* Grammar analysis button */}
       {grammarPatterns.length === 0 && (
         <div className="mb-3">
           <button
@@ -324,28 +307,27 @@ export default function ScriptStep({
             {grammarLoading ? (
               <>
                 <div className="w-3 h-3 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-                语法分析中...
+                Analyzing grammar...
               </>
             ) : (
               <>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                分析语法结构
+                Analyze Grammar
               </>
             )}
           </button>
         </div>
       )}
 
-      {/* 스크립트 본문 */}
+      {/* Script body */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-4">
         <div className="space-y-4">
           {sentences.map((sentence, si) => {
             const patterns = patternsForSentence(si);
             const tokens = sentence.split(/(\s+)/);
 
-            // Build anchor map: token index -> pattern index
             const anchorMap = new Map<number, number>();
             patterns.forEach((p, pi) => {
               const idx = findPatternAnchor(p, tokens);
@@ -354,13 +336,11 @@ export default function ScriptStep({
               }
             });
 
-            // Patterns that couldn't be anchored to a token
             const anchoredPis = new Set(anchorMap.values());
             const unanchoredPatterns = patterns.filter((_, pi) => !anchoredPis.has(pi));
 
             return (
               <div key={si}>
-                {/* 문장 with inline grammar badges */}
                 <div className="leading-relaxed" style={anchorMap.size > 0 ? { lineHeight: '2.6' } : undefined}>
                   {tokens.map((token, ti) => {
                     if (/^\s+$/.test(token)) return <span key={ti}> </span>;
@@ -411,7 +391,6 @@ export default function ScriptStep({
                   })}
                 </div>
 
-                {/* Unanchored pattern badges (fallback) */}
                 {unanchoredPatterns.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-1.5 ml-4">
                     {unanchoredPatterns.map((p) => {
@@ -437,7 +416,6 @@ export default function ScriptStep({
                   </div>
                 )}
 
-                {/* 문법 패턴 확장 — with quiz toggle */}
                 {patterns.map((p, pi) =>
                   expandedGrammar === si * 100 + pi ? (
                     <div
@@ -467,7 +445,7 @@ export default function ScriptStep({
                             : 'bg-white border border-purple-300 text-purple-700 hover:bg-purple-100'
                         }`}
                       >
-                        {selectedGrammar.some(g => g.pattern === p.pattern) ? '已添加到测验 ✓' : '添加到测验'}
+                        {selectedGrammar.some(g => g.pattern === p.pattern) ? 'Added to Quiz ✓' : 'Add to Quiz'}
                       </button>
                     </div>
                   ) : null
@@ -478,7 +456,7 @@ export default function ScriptStep({
         </div>
       </div>
 
-      {/* 팝업 */}
+      {/* Word popup */}
       {popup && (
         <div
           className="fixed bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-50 min-w-[220px] max-w-[300px]"
@@ -490,7 +468,7 @@ export default function ScriptStep({
           {analysisLoading ? (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-              分析中...
+              Analyzing...
             </div>
           ) : (
             <>
@@ -502,7 +480,7 @@ export default function ScriptStep({
               )}
               {!popup.hanja && popup.chinese && (
                 <p className="text-sm text-gray-600">
-                  中文: <span className="font-medium">{popup.chinese}</span>
+                  Translation: <span className="font-medium">{popup.chinese}</span>
                 </p>
               )}
               {popup.meaning && (
@@ -510,7 +488,7 @@ export default function ScriptStep({
               )}
               {popup.isFalseFriend && popup.falseFriendNote && (
                 <div className="mt-2 bg-orange-50 border border-orange-200 rounded p-2">
-                  <p className="text-xs font-semibold text-orange-700">注意：中韩含义差异</p>
+                  <p className="text-xs font-semibold text-orange-700">Note: False friend (meaning differs)</p>
                   <p className="text-xs text-orange-600 mt-0.5">{popup.falseFriendNote}</p>
                 </div>
               )}
@@ -521,16 +499,16 @@ export default function ScriptStep({
             onClick={handleAddWord}
             className="mt-3 w-full py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
           >
-            添加到生词本
+            Add to Vocabulary
           </button>
         </div>
       )}
 
-      {/* 선택한 단어 목록 */}
+      {/* Selected words */}
       {selectedWords.length > 0 && (
         <div className="bg-blue-50 rounded-lg p-4 mb-4">
           <h3 className="text-xs font-semibold text-blue-700 mb-2">
-            已选单词 ({selectedWords.length})
+            Selected Words ({selectedWords.length})
           </h3>
           <div className="flex flex-wrap gap-2">
             {selectedWords.map((item, i) => (
@@ -546,11 +524,11 @@ export default function ScriptStep({
         </div>
       )}
 
-      {/* 선택한 문법 목록 */}
+      {/* Selected grammar */}
       {selectedGrammar.length > 0 && (
         <div className="bg-purple-50 rounded-lg p-4 mb-4">
           <h3 className="text-xs font-semibold text-purple-700 mb-2">
-            已选语法 ({selectedGrammar.length})
+            Selected Grammar ({selectedGrammar.length})
           </h3>
           <div className="flex flex-wrap gap-2">
             {selectedGrammar.map((p, i) => (
@@ -571,12 +549,12 @@ export default function ScriptStep({
         </div>
       )}
 
-      {/* 다음 단계 */}
+      {/* Next step */}
       <button
         onClick={onNext}
         className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
       >
-        进入测验 →（{selectedWords.length}个单词{selectedGrammar.length > 0 ? `，${selectedGrammar.length}个语法` : ''}）
+        Go to Quiz &rarr; ({selectedWords.length} word{selectedWords.length !== 1 ? 's' : ''}{selectedGrammar.length > 0 ? `, ${selectedGrammar.length} grammar` : ''})
       </button>
     </div>
   );

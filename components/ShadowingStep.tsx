@@ -11,7 +11,6 @@ interface Props {
 }
 
 export default function ShadowingStep({ article, articleId, onComplete }: Props) {
-  // 스크립트를 문장 단위로 분리
   const script = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
   const sentences = script.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
 
@@ -50,7 +49,7 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
       setAudioUrl(null);
       recordingStartRef.current = Date.now();
     } catch {
-      alert('需要麦克风访问权限。');
+      alert('Microphone access is required.');
     }
   }, []);
 
@@ -75,7 +74,6 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
       score,
     };
 
-    // Log shadowing_score
     logEvent('shadowing_score', {
       sentenceIndex: currentIndex,
       sentence: sentences[currentIndex],
@@ -93,7 +91,6 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
       setIsDone(true);
       onComplete(newResults);
 
-      // Log shadowing_complete
       const avgScore = Math.round(newResults.reduce((sum, r) => sum + r.score, 0) / newResults.length);
       const lowScoreCount = newResults.filter(r => r.score <= 2).length;
       logEvent('shadowing_complete', {
@@ -129,7 +126,7 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
   if (sentences.length === 0) {
     return (
       <div className="text-center py-20 text-gray-500">
-        <p>暂无脚本内容</p>
+        <p>No script content available</p>
       </div>
     );
   }
@@ -143,16 +140,14 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
 
     return (
       <div className="py-6">
-        {/* 종합 결과 */}
         <div className="text-center mb-8">
           <div className="text-5xl font-bold text-gray-900 mb-2">
             {completedCount === 0 ? '—' : avgScore >= 4 ? 'A' : avgScore >= 3 ? 'B' : avgScore >= 2 ? 'C' : 'D'}
           </div>
-          <p className="text-gray-500">{completedCount > 0 ? `平均 ${avgScore}/5分` : '未练习'}</p>
-          <p className="text-sm text-gray-400 mt-1">完成 {completedCount}/{sentences.length} 个句子</p>
+          <p className="text-gray-500">{completedCount > 0 ? `Average ${avgScore}/5` : 'No practice'}</p>
+          <p className="text-sm text-gray-400 mt-1">Completed {completedCount}/{sentences.length} sentences</p>
         </div>
 
-        {/* 문장별 결과 */}
         <div className="space-y-2 mb-6">
           {results.map((r, i) => (
             <div
@@ -173,20 +168,19 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
           ))}
         </div>
 
-        {/* 낮은 점수 문장 → 문장 은행 */}
         {lowScores.length > 0 && (
           <div className="bg-orange-50 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-orange-700 mb-1">
-              已保存到句子库（{lowScores.length}个）
+              Saved to sentence bank ({lowScores.length})
             </h3>
             <p className="text-xs text-orange-600">
-              低分句子已添加到复习列表
+              Low-scoring sentences added to review list
             </p>
           </div>
         )}
 
         <div className="text-center">
-          <p className="text-sm text-gray-500">今天的学习已完成！</p>
+          <p className="text-sm text-gray-500">Today&apos;s study is complete!</p>
         </div>
       </div>
     );
@@ -196,13 +190,12 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
 
   return (
     <div>
-      {/* 팁 (첫 번째만) */}
       {showTip && currentIndex === 0 && (
         <div className="bg-blue-50 rounded-lg p-3 mb-4 flex items-start gap-2">
           <span className="text-blue-500 shrink-0 mt-0.5">i</span>
           <div className="text-xs text-blue-700">
-            <p className="font-medium mb-1">跟读方法</p>
-            <p>阅读句子 → 点击录音按钮跟读 → 自我评价发音</p>
+            <p className="font-medium mb-1">How to Shadow</p>
+            <p>Read the sentence &rarr; Tap record &rarr; Rate your pronunciation</p>
           </div>
           <button onClick={() => setShowTip(false)} className="text-blue-400 shrink-0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -212,7 +205,6 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
         </div>
       )}
 
-      {/* 진행 바 + 종료 버튼 */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -225,18 +217,16 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
           onClick={finishEarly}
           className="shrink-0 text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
         >
-          结束练习
+          End Practice
         </button>
       </div>
 
-      {/* 현재 문장 */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
         <p className="text-lg text-gray-900 leading-relaxed text-center">
           {sentence}
         </p>
       </div>
 
-      {/* 녹음 컨트롤 */}
       <div className="flex justify-center mb-6">
         {!isRecording && !audioUrl && (
           <button
@@ -262,23 +252,19 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
         )}
       </div>
 
-      {/* 녹음 상태 */}
       {isRecording && (
-        <p className="text-center text-sm text-red-500 mb-4">录音中...完成后请点击停止按钮</p>
+        <p className="text-center text-sm text-red-500 mb-4">Recording... Tap stop when done</p>
       )}
 
-      {/* 재생 + 자가 평가 */}
       {audioUrl && (
         <div className="space-y-4">
-          {/* 내 녹음 재생 */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">我的录音</p>
+            <p className="text-xs text-gray-500 mb-2">My Recording</p>
             <audio controls src={audioUrl} className="w-full" />
           </div>
 
-          {/* 자가 평가 */}
           <div>
-            <p className="text-sm text-gray-600 mb-3 text-center">请给自己的发音打分</p>
+            <p className="text-sm text-gray-600 mb-3 text-center">Rate your pronunciation</p>
             <div className="flex gap-2 justify-center">
               {[1, 2, 3, 4, 5].map(score => (
                 <button
@@ -297,17 +283,16 @@ export default function ShadowingStep({ article, articleId, onComplete }: Props)
               ))}
             </div>
             <div className="flex justify-between text-xs text-gray-400 mt-1 px-1">
-              <span>差</span>
-              <span>完美</span>
+              <span>Poor</span>
+              <span>Perfect</span>
             </div>
           </div>
 
-          {/* 다시 녹음 */}
           <button
             onClick={() => { setAudioUrl(null); rerecordCountRef.current += 1; }}
             className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
           >
-            重新录音
+            Re-record
           </button>
         </div>
       )}

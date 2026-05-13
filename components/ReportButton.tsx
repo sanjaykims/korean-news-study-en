@@ -10,13 +10,6 @@ interface Props {
   selectedWords: SelectedItem[];
 }
 
-// 보고서 버튼 — PDF 생성 (jspdf + html2canvas)
-// 출력 내용:
-//   1) 헤더: 뉴스 날짜, 제목, 토픽 카테고리
-//   2) 전체 스크립트 (proofreadScript 우선, 없으면 세그먼트 결합)
-//   3) 선택 단어 목록 (한국어 ↔ 중국어 병기)
-//   4) 보고서 생성 시각 (로컬 타임존)
-// 학습 이벤트로 'report_generated' 기록 (user_id='yaofang', 타임스탬프는 DB created_at)
 export default function ReportButton({ article, articleId, selectedWords }: Props) {
   const reportRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
@@ -24,10 +17,10 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
   const fullScript =
     article.proofreadScript?.trim() ||
     (article.transcriptSegments || []).map((s) => s.text).join(' ') ||
-    '(전사본 없음)';
+    '(No transcript available)';
 
   const now = new Date();
-  const generatedAtLocal = now.toLocaleString('ko-KR', {
+  const generatedAtLocal = now.toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -46,7 +39,6 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
       ]);
 
       const node = reportRef.current;
-      // 화면 밖에 있던 DOM을 잠시 보이게 하여 정확한 크기로 캡처
       node.style.left = '0';
       node.style.top = '0';
       node.style.visibility = 'visible';
@@ -63,7 +55,6 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
 
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
-      // A4 사이즈 mm 기준
       const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
       const pageWidthMm = pdf.internal.pageSize.getWidth();
       const pageHeightMm = pdf.internal.pageSize.getHeight();
@@ -88,10 +79,9 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
       }
 
       const safeTitle = article.title.replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
-      const fileName = `야오팡-${article.newsDate}-${safeTitle}.pdf`;
+      const fileName = `korean-news-${article.newsDate}-${safeTitle}.pdf`;
       pdf.save(fileName);
 
-      // 누가/언제 보고서를 만들었는지 기록 (DB created_at + user_id='yaofang')
       logEvent(
         'report_generated',
         {
@@ -105,8 +95,8 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
         articleId,
       );
     } catch (e) {
-      console.error('[report] PDF 생성 실패', e);
-      alert('PDF 생성 중 오류가 발생했습니다.');
+      console.error('[report] PDF generation failed', e);
+      alert('Error generating PDF.');
     } finally {
       setGenerating(false);
     }
@@ -119,12 +109,12 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
         onClick={generatePdf}
         disabled={generating}
         className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-xs font-semibold transition-colors"
-        title="生成学习报告 (PDF)"
+        title="Generate study report (PDF)"
       >
         {generating ? (
           <>
             <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            <span>生成中…</span>
+            <span>Generating...</span>
           </>
         ) : (
           <>
@@ -133,24 +123,23 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>报告 PDF</span>
+            <span>Report PDF</span>
           </>
         )}
       </button>
 
-      {/* PDF 렌더링 대상 — 화면 밖에 위치, html2canvas로 캡처 */}
       <div
         ref={reportRef}
         style={{
           position: 'fixed',
           left: '-9999px',
           top: 0,
-          width: '794px', // ≒ A4 96dpi
+          width: '794px',
           padding: '40px',
           background: '#ffffff',
           color: '#111111',
           fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK KR", "Noto Sans CJK SC", system-ui, sans-serif',
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK KR", system-ui, sans-serif',
           fontSize: '14px',
           lineHeight: 1.6,
           visibility: 'hidden',
@@ -160,21 +149,21 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
       >
         <div style={{ borderBottom: '2px solid #111', paddingBottom: '12px', marginBottom: '20px' }}>
           <div style={{ fontSize: '11px', color: '#666', letterSpacing: '0.05em', marginBottom: '4px' }}>
-            야오팡 · JTBC 뉴스 학습 보고서
+            Korean News Study Report
           </div>
           <h1 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#111' }}>
             {article.title}
           </h1>
           <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#444' }}>
-            <span>📅 방송일 · {article.newsDate}</span>
-            {article.topic && <span>🏷 카테고리 · {article.topic}</span>}
-            {article.reporter && <span>🎙 기자 · {article.reporter}</span>}
+            <span>Broadcast: {article.newsDate}</span>
+            {article.topic && <span>Topic: {article.topic}</span>}
+            {article.reporter && <span>Reporter: {article.reporter}</span>}
           </div>
         </div>
 
         <section style={{ marginBottom: '24px' }}>
           <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#1d4ed8', marginBottom: '8px', borderLeft: '4px solid #1d4ed8', paddingLeft: '8px' }}>
-            1. 전체 스크립트 (全文)
+            1. Full Script
           </h2>
           <p style={{ whiteSpace: 'pre-wrap', textAlign: 'justify', margin: 0, color: '#222' }}>
             {fullScript}
@@ -183,19 +172,19 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
 
         <section style={{ marginBottom: '24px' }}>
           <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#059669', marginBottom: '8px', borderLeft: '4px solid #059669', paddingLeft: '8px' }}>
-            2. 단어장 (词汇表) · {selectedWords.length}
+            2. Vocabulary &middot; {selectedWords.length}
           </h2>
           {selectedWords.length === 0 ? (
-            <p style={{ color: '#888', fontStyle: 'italic', margin: 0 }}>选择的单词没有 (선택한 단어 없음)</p>
+            <p style={{ color: '#888', fontStyle: 'italic', margin: 0 }}>No words selected</p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: '#f3f4f6' }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '8%' }}>#</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '24%' }}>한국어</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '20%' }}>한자</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '20%' }}>中文</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '28%' }}>의미 / 含义</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '24%' }}>Korean</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '20%' }}>Hanja</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '20%' }}>Translation</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #ddd', width: '28%' }}>Meaning</th>
                 </tr>
               </thead>
               <tbody>
@@ -214,8 +203,8 @@ export default function ReportButton({ article, articleId, selectedWords }: Prop
         </section>
 
         <div style={{ marginTop: '32px', paddingTop: '12px', borderTop: '1px solid #ddd', fontSize: '11px', color: '#888', display: 'flex', justifyContent: 'space-between' }}>
-          <span>报告生成时间 · {generatedAtLocal}</span>
-          <span>yaofang-news-study.vercel.app</span>
+          <span>Generated: {generatedAtLocal}</span>
+          <span>korean-news-study.vercel.app</span>
         </div>
       </div>
     </>

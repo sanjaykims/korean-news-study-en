@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "姚芳新闻学习",
-  description: "通过JTBC新闻学韩语 — 汉字词桥梁学习法",
+  title: "Korean News Study",
+  description: "Learn Korean through JTBC News — Real broadcast, real language",
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body className="antialiased min-h-screen">
         {children}
       </body>

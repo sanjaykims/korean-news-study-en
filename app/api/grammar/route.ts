@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
 // POST /api/grammar
-// 뉴스 스크립트에서 문법 패턴 감지
+// Detect grammar patterns in news script
 export async function POST(request: NextRequest) {
   const { script } = await request.json();
   if (!script) {
@@ -22,39 +22,39 @@ export async function POST(request: NextRequest) {
       max_tokens: 2048,
       messages: [{
         role: 'user',
-        content: `请在以下韩语新闻脚本中找出主要语法模式。
-对象：中文母语高级韩语学习者
+        content: `Find key grammar patterns in the following Korean news script.
+Target audience: English-speaking intermediate-advanced Korean learners.
 
-脚本：
+Script:
 ${script}
 
-请重点查找以下新闻特有语法模式：
-- -에 따르면（据...称）
-- -(으)ㄹ 것으로 보입니다/전망입니다（预计...）
-- -는 것으로 나타났습니다/알려졌습니다（据悉.../据了解...）
-- -(으)ㄹ 방침입니다（方针是...）
-- -에 나섰습니다（着手...）
-- -(으)ㄴ/는 가운데（在...的情况下）
-- -을/를 둘러싸고（围绕...）
-- 其他新闻文体语法
+Focus on these news-specific grammar patterns:
+- -에 따르면 (according to...)
+- -(으)ㄹ 것으로 보입니다/전망입니다 (it is expected that...)
+- -는 것으로 나타났습니다/알려졌습니다 (it was found/revealed that...)
+- -(으)ㄹ 방침입니다 (the plan is to...)
+- -에 나섰습니다 (began to... / took steps to...)
+- -(으)ㄴ/는 가운데 (amid... / while...)
+- -을/를 둘러싸고 (surrounding... / regarding...)
+- Other news register grammar
 
-返回JSON数组：
+Return JSON array:
 [{
-  "pattern": "语法模式名称",
-  "meaning": "韩语释义",
-  "chineseMeaning": "简体中文解释",
-  "example": "脚本中找到的例句",
+  "pattern": "grammar pattern name",
+  "meaning": "Korean explanation",
+  "chineseMeaning": "English explanation",
+  "example": "example sentence from the script",
   "sentenceIndex": 0,
   "difficultyForChinese": "high"
 }]
 
-sentenceIndex是将脚本按句号分句后的索引。
-所有中文内容必须使用简体中文。
-difficultyForChinese必须是以下之一：
-- "high"：对中文母语者较难的语法（助词、动词活用、敬语、连接词尾）
-- "medium"：中等难度（时态标记、否定表达、被动/使动）
-- "low"：对中文母语者较简单的语法（汉字词结构、数字表达）
-只返回JSON。`,
+sentenceIndex is the index when the script is split by periods.
+The "chineseMeaning" field should contain a clear English explanation.
+difficultyForChinese must be one of:
+- "high": difficult grammar for learners (particles, verb conjugation, honorifics, connective endings)
+- "medium": moderate difficulty (tense markers, negation, passive/causative)
+- "low": simpler patterns (Sino-Korean structures, number expressions)
+Return JSON only.`,
       }],
     });
 

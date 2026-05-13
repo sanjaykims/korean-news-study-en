@@ -25,7 +25,6 @@ export default function VideoStep({ article, articleId, onNext }: Props) {
   const playStartRef = useRef<number>(0);
   const totalWatchedRef = useRef<number>(0);
 
-  // 스크립트 문장 분리 (교정본 또는 원본)
   const script = article.proofreadScript || article.transcriptSegments?.map(s => s.text).join(' ') || '';
   const sentences = script.split(/(?<=[.!?])\s+/).filter(Boolean);
 
@@ -52,12 +51,10 @@ export default function VideoStep({ article, articleId, onNext }: Props) {
 
   return (
     <div>
-      {/* YouTube 플레이어 */}
       <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4">
         <div id={containerId} className="w-full h-full" />
       </div>
 
-      {/* 컨트롤 */}
       <div className="flex items-center justify-between mb-6">
         <div className="text-xs text-gray-500">
           {formatTime(article.startTime)} — {formatTime(article.endTime)}
@@ -68,7 +65,7 @@ export default function VideoStep({ article, articleId, onNext }: Props) {
               onClick={handleReplay}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
             >
-              重新播放
+              Replay
             </button>
           ) : (
             <button
@@ -76,16 +73,15 @@ export default function VideoStep({ article, articleId, onNext }: Props) {
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
               disabled={!isReady}
             >
-              {isPlaying ? '暂停' : '播放'}
+              {isPlaying ? 'Pause' : 'Play'}
             </button>
           )}
         </div>
       </div>
 
-      {/* 스크립트 미리보기 */}
       {sentences.length > 0 && (
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">脚本</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">Script</h3>
           <div className="space-y-2 text-sm text-gray-700 leading-relaxed">
             {sentences.map((sentence, i) => (
               <p key={i}>{sentence}</p>
@@ -94,12 +90,11 @@ export default function VideoStep({ article, articleId, onNext }: Props) {
         </div>
       )}
 
-      {/* 다음 단계 버튼 */}
       <button
         onClick={onNext}
         className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
       >
-        进入脚本学习 →
+        Go to Script Study &rarr;
       </button>
     </div>
   );

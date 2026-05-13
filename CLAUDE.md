@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Korean learning platform using JTBC newsroom material, daily (automatic update). Single-user (Chinese).
+Korean learning platform (English UI) using JTBC newsroom material, daily automatic update. Global audience — all UI and explanations in English.
+
+This is the **English version** — forked from the Chinese version (`yaofang-news-study`). The Chinese version targets Chinese native speakers with hanja bridge features; this version targets global English-speaking Korean learners.
 
 ## Commands
 
@@ -35,9 +37,9 @@ Each step is a React component in `components/`. The study page (`app/study/[art
 ### API Routes (`app/api/`)
 
 - **Content ingestion:** `ingest/` (manual POST), `auto-ingest/` (Vercel cron at 14:00 UTC), `yt-proxy/` (edge runtime, Seoul/Tokyo PoP for YouTube geo-bypass)
-- **Claude-powered:** `analyze-word/` (hanja + Chinese mapping + word origin), `grammar/` (pattern detection), `quiz/` (bidirectional Chinese↔Korean generation)
+- **Claude-powered:** `analyze-word/` (hanja + English meaning + word origin), `grammar/` (pattern detection with English explanations), `quiz/` (bidirectional English↔Korean generation), `rewrite/` (multi-level news rewrites)
 - **Data persistence:** `vocabulary/` (save selected words, dedup by word), `sentence-bank/` (wrong quiz answers + low shadowing scores), `events/` (analytics ingestion)
-- **Reads:** `articles/` (list by date), `articles/[id]/` (single article), `review/` (mastery-ranked vocabulary)
+- **Reads:** `articles/` (list by date), `articles/[id]/` (single article), `review/` (mastery-ranked vocabulary), `stats/` (learning statistics)
 
 ### Data Model (Supabase)
 
@@ -62,11 +64,12 @@ Schema in `supabase/schema.sql`. Key tables:
 
 ## Important Patterns
 
+- **All UI text is in English** — this is the global version
 - **Edge runtime** is used for `yt-proxy` and `auto-ingest` routes to run on Cloudflare Seoul/Tokyo PoPs, bypassing US YouTube geo-restrictions
 - **Vercel cron** triggers `/api/auto-ingest` daily; authenticated via `CRON_SECRET` header
-- **All UI comments and type comments are in Korean** — this is intentional for the target user
 - **Analytics are fire-and-forget** — `logEvent()` uses `fetch()` without awaiting; never block the study UX
-- **Chinese-learner-specific fields** appear throughout: `wordOrigin`, `difficultyForChinese`, `isFalseFriend`, `rerecordCount`
+- **Word origin fields** (`wordOrigin`, `isFalseFriend`) still use Korean category names internally (한자어/고유어/외래어/혼종어) for DB compatibility with the Chinese version
+- **API prompts generate English content** — analyze-word returns English meanings, quiz generates English↔Korean questions, grammar explanations are in English
 
 ## Environment Variables
 

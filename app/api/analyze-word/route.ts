@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
 // POST /api/analyze-word
-// 단어의 한자어 분석 — 한자, 중국어 대응, 뜻, false friend 여부
+// Analyze a Korean word — hanja, English meaning, word origin
 export async function POST(request: NextRequest) {
   const { word } = await request.json();
   if (!word) {
@@ -28,29 +28,29 @@ export async function POST(request: NextRequest) {
       max_tokens: 256,
       messages: [{
         role: 'user',
-        content: `请分析韩语单词"${word}"。
+        content: `Analyze the Korean word "${word}".
 
-只返回以下JSON格式（不要其他文字）：
+Return ONLY the following JSON (no other text):
 {
-  "hanja": "对应汉字（如有）",
-  "chinese": "对应的简体中文词汇/表达",
-  "meaning": "简体中文释义（简短）",
+  "hanja": "corresponding Chinese characters (if applicable)",
+  "chinese": "English translation/equivalent",
+  "meaning": "brief English definition",
   "wordOrigin": "한자어",
   "isFalseFriend": false,
-  "falseFriendNote": "中韩含义差异说明（仅在false friend时填写）"
+  "falseFriendNote": "note about meaning differences (only if false friend)"
 }
 
-规则：
-- 非汉字词则hanja为null
-- chinese必须使用简体中文
-- meaning必须使用简体中文
-- wordOrigin必须是以下之一：
-  - "한자어"（汉字词，如 경제, 사회, 정치）
-  - "고유어"（固有词/纯韩语词，如 하늘, 사람, 먹다）
-  - "외래어"（外来词，如 뉴스, 컴퓨터, 버스）
-  - "혼종어"（混合词，汉字+固有语组合，如 녹색빛）
-- isFalseFriend：韩语和中文使用相同汉字但含义不同时为true
-- 固有词（纯韩语）和外来词也要提供chinese翻译`,
+Rules:
+- If not a Sino-Korean word, set hanja to null
+- "chinese" field must contain the English translation
+- "meaning" field must contain a brief English definition
+- wordOrigin must be one of:
+  - "한자어" (Sino-Korean word, e.g. 경제, 사회, 정치)
+  - "고유어" (Native Korean word, e.g. 하늘, 사람, 먹다)
+  - "외래어" (Loanword, e.g. 뉴스, 컴퓨터, 버스)
+  - "혼종어" (Hybrid word, Sino-Korean + native combination, e.g. 녹색빛)
+- isFalseFriend: true when the Korean word uses the same hanja as a Chinese/Japanese word but means something different
+- Always provide an English translation for all word types`,
       }],
     });
 

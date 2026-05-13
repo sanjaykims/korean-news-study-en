@@ -16,14 +16,22 @@ interface StatsData {
   totalReports: number;
 }
 
-const MASTERY_LABELS = ['新词', '初识', '熟悉', '掌握', '巩固', '精通'];
+const MASTERY_LABELS = ['New', 'Seen', 'Familiar', 'Learned', 'Strong', 'Mastered'];
 const MASTERY_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'];
 const ORIGIN_COLORS: Record<string, string> = {
-  '한자어': '#3b82f6',
-  '고유어': '#22c55e',
-  '외래어': '#f59e0b',
-  '혼종어': '#a855f7',
-  '미분류': '#6b7280',
+  'Sino-Korean': '#3b82f6',
+  'Native Korean': '#22c55e',
+  'Loanword': '#f59e0b',
+  'Hybrid': '#a855f7',
+  'Unclassified': '#6b7280',
+};
+
+const ORIGIN_MAP: Record<string, string> = {
+  '한자어': 'Sino-Korean',
+  '고유어': 'Native Korean',
+  '외래어': 'Loanword',
+  '혼종어': 'Hybrid',
+  '미분류': 'Unclassified',
 };
 
 export default function StatsPage() {
@@ -49,8 +57,8 @@ export default function StatsPage() {
   if (!stats) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <p className="text-red-500">统计数据加载失败</p>
-        <a href="/" className="text-blue-600 text-sm mt-4 inline-block">← 返回首页</a>
+        <p className="text-red-500">Failed to load statistics</p>
+        <a href="/" className="text-blue-600 text-sm mt-4 inline-block">&larr; Home</a>
       </div>
     );
   }
@@ -61,40 +69,35 @@ export default function StatsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 pb-20">
-      {/* Header */}
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">学习统计</h1>
-          <p className="text-sm text-gray-500 mt-1">Learning Statistics</p>
+          <h1 className="text-2xl font-bold text-gray-900">Learning Statistics</h1>
         </div>
         <a href="/" className="text-sm px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium">
-          ← 首页
+          &larr; Home
         </a>
       </header>
 
-      {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <MetricCard value={stats.totalWords} label="已学单词" sub="Total Words" color="text-blue-600" />
-        <MetricCard value={stats.streak} label="连续学习天数" sub="Day Streak" color="text-amber-600" />
-        <MetricCard value={stats.studyDays} label="学习天数" sub="Study Days" color="text-green-600" />
-        <MetricCard value={stats.dueCount} label="待复习" sub="Due for Review" color="text-red-500" />
+        <MetricCard value={stats.totalWords} label="Words Learned" color="text-blue-600" />
+        <MetricCard value={stats.streak} label="Day Streak" color="text-amber-600" />
+        <MetricCard value={stats.studyDays} label="Study Days" color="text-green-600" />
+        <MetricCard value={stats.dueCount} label="Due for Review" color="text-red-500" />
       </div>
 
-      {/* Quick Links */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <a href="/" className="block bg-white rounded-xl border border-gray-200 p-4 text-center hover:border-blue-300 hover:shadow-sm transition-all">
           <div className="text-2xl font-bold text-gray-900">{stats.totalBroadcasts}</div>
-          <div className="text-xs text-gray-500 mt-1">收录节目 Broadcasts</div>
+          <div className="text-xs text-gray-500 mt-1">Broadcasts</div>
         </a>
         <a href="/" className="block bg-white rounded-xl border border-gray-200 p-4 text-center hover:border-blue-300 hover:shadow-sm transition-all">
           <div className="text-2xl font-bold text-gray-900">{stats.totalArticles}</div>
-          <div className="text-xs text-gray-500 mt-1">新闻条目 Articles</div>
+          <div className="text-xs text-gray-500 mt-1">Articles</div>
         </a>
       </div>
 
-      {/* Activity Heatbar - Last 30 Days */}
       <section className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <h2 className="text-sm font-semibold text-gray-800 mb-3">最近30天学习活动</h2>
+        <h2 className="text-sm font-semibold text-gray-800 mb-3">Last 30 Days Activity</h2>
         <div className="flex items-end gap-[3px] h-20">
           {stats.last30.map((d) => {
             const h = d.sessions > 0 ? Math.max(8, (d.sessions / maxSessions) * 100) : 0;
@@ -126,16 +129,12 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* Mastery Distribution */}
       <section className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <h2 className="text-sm font-semibold text-gray-800 mb-3">
-          掌握程度分布
-          <span className="text-xs text-gray-400 font-normal ml-2">Mastery</span>
-        </h2>
+        <h2 className="text-sm font-semibold text-gray-800 mb-3">Mastery Distribution</h2>
         <div className="space-y-2">
           {stats.masteryDist.map((count, i) => (
             <div key={i} className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 w-10 shrink-0">{MASTERY_LABELS[i]}</span>
+              <span className="text-xs text-gray-500 w-16 shrink-0">{MASTERY_LABELS[i]}</span>
               <div className="flex-1 h-6 bg-gray-50 rounded-full overflow-hidden relative">
                 <div
                   className="h-full rounded-full transition-all"
@@ -156,58 +155,55 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* Word Origin Distribution */}
       {Object.keys(stats.originDist).length > 0 && (
         <section className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-3">
-            词汇来源分布
-            <span className="text-xs text-gray-400 font-normal ml-2">Word Origin</span>
-          </h2>
-          {/* Stacked bar */}
+          <h2 className="text-sm font-semibold text-gray-800 mb-3">Word Origin Distribution</h2>
           <div className="h-8 rounded-full overflow-hidden flex mb-3">
             {Object.entries(stats.originDist)
               .sort((a, b) => b[1] - a[1])
-              .map(([origin, count]) => (
-                <div
-                  key={origin}
-                  className="h-full flex items-center justify-center"
-                  style={{
-                    width: `${(count / totalOrigin) * 100}%`,
-                    backgroundColor: ORIGIN_COLORS[origin] || '#6b7280',
-                    opacity: 0.75,
-                    minWidth: count > 0 ? '20px' : 0,
-                  }}
-                  title={`${origin}: ${count}`}
-                >
-                  {(count / totalOrigin) > 0.08 && (
-                    <span className="text-[10px] text-white font-bold">{count}</span>
-                  )}
-                </div>
-              ))}
+              .map(([origin, count]) => {
+                const label = ORIGIN_MAP[origin] || origin;
+                return (
+                  <div
+                    key={origin}
+                    className="h-full flex items-center justify-center"
+                    style={{
+                      width: `${(count / totalOrigin) * 100}%`,
+                      backgroundColor: ORIGIN_COLORS[label] || '#6b7280',
+                      opacity: 0.75,
+                      minWidth: count > 0 ? '20px' : 0,
+                    }}
+                    title={`${label}: ${count}`}
+                  >
+                    {(count / totalOrigin) > 0.08 && (
+                      <span className="text-[10px] text-white font-bold">{count}</span>
+                    )}
+                  </div>
+                );
+              })}
           </div>
           <div className="flex flex-wrap gap-3">
             {Object.entries(stats.originDist)
               .sort((a, b) => b[1] - a[1])
-              .map(([origin, count]) => (
-                <div key={origin} className="flex items-center gap-1.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: ORIGIN_COLORS[origin] || '#6b7280' }}
-                  />
-                  <span className="text-xs text-gray-600">{origin} ({count})</span>
-                </div>
-              ))}
+              .map(([origin, count]) => {
+                const label = ORIGIN_MAP[origin] || origin;
+                return (
+                  <div key={origin} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: ORIGIN_COLORS[label] || '#6b7280' }}
+                    />
+                    <span className="text-xs text-gray-600">{label} ({count})</span>
+                  </div>
+                );
+              })}
           </div>
         </section>
       )}
 
-      {/* Weakest Words */}
       {stats.weakest.length > 0 && (
         <section className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-3">
-            最薄弱的单词
-            <span className="text-xs text-gray-400 font-normal ml-2">Weakest</span>
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-3">Weakest Words</h2>
           <div className="space-y-1.5">
             {stats.weakest.map((w, i) => (
               <div key={i} className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-lg bg-gray-50">
@@ -219,32 +215,30 @@ export default function StatsPage() {
                 }}>
                   {MASTERY_LABELS[w.mastery]}
                 </span>
-                <span className="text-xs text-gray-400">{w.reviews}次</span>
+                <span className="text-xs text-gray-400">{w.reviews}x</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* SRS Review CTA */}
       {stats.dueCount > 0 && (
         <a
           href="/?view=review"
           className="block w-full py-4 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-xl font-semibold transition-colors"
         >
-          开始复习 · {stats.dueCount}个待复习单词
+          Start Review &middot; {stats.dueCount} words due
         </a>
       )}
     </div>
   );
 }
 
-function MetricCard({ value, label, sub, color }: { value: number; label: string; sub: string; color: string }) {
+function MetricCard({ value, label, color }: { value: number; label: string; color: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
       <div className={`text-3xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-700 mt-1 font-medium">{label}</div>
-      <div className="text-[10px] text-gray-400">{sub}</div>
     </div>
   );
 }

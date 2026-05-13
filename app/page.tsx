@@ -7,8 +7,7 @@ import ReviewStep from '@/components/ReviewStep';
 
 type PageView = 'articles' | 'review';
 
-// 요일 라벨 (중국어)
-const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function Home() {
   const [view, setView] = useState<PageView>('articles');
@@ -19,7 +18,6 @@ export default function Home() {
   const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
 
-  // 사용 가능한 날짜 목록 가져오기
   useEffect(() => {
     async function fetchDates() {
       try {
@@ -28,18 +26,16 @@ export default function Home() {
         const data = await res.json();
         const dates: string[] = data.dates || [];
         setAvailableDates(new Set(dates));
-        // 기본값: 최신 날짜
         if (dates.length > 0 && !selectedDate) {
           setSelectedDate(dates[0]);
         }
       } catch {
-        // 무시 — 기사 fetch에서 에러 처리
+        // ignored
       }
     }
     fetchDates();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 선택된 날짜의 기사 가져오기
   const fetchArticles = useCallback(async (date: string) => {
     if (!date) return;
     setLoading(true);
@@ -62,17 +58,16 @@ export default function Home() {
     }
   }, [selectedDate, fetchArticles]);
 
-  const formatDateChinese = (dateStr: string) => {
+  const formatDateEnglish = (dateStr: string) => {
     if (!dateStr) return '';
     const d = new Date(dateStr + 'T00:00:00');
-    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   const handleDateSelect = (dateStr: string) => {
     setSelectedDate(dateStr);
   };
 
-  // 달력 생성
   const generateCalendar = (month: Date) => {
     const year = month.getFullYear();
     const m = month.getMonth();
@@ -109,25 +104,24 @@ export default function Home() {
     setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  const calendarMonthLabel = `${calendarMonth.getFullYear()}年${calendarMonth.getMonth() + 1}月`;
+  const calendarMonthLabel = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth()).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
   const weeks = generateCalendar(calendarMonth);
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  // 복습 뷰
   if (view === 'review') {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <header className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">SRS 复习</h1>
-            <p className="text-sm text-gray-500 mt-1">间隔重复 · Spaced Repetition</p>
+            <h1 className="text-2xl font-bold text-gray-900">SRS Review</h1>
+            <p className="text-sm text-gray-500 mt-1">Spaced Repetition System</p>
           </div>
           <button
             onClick={() => setView('articles')}
             className="text-sm px-4 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-medium"
           >
-            ← 返回新闻
+            &larr; Back to News
           </button>
         </header>
         <ReviewStep onDone={() => setView('articles')} />
@@ -135,34 +129,31 @@ export default function Home() {
     );
   }
 
-  // 기사 목록 뷰 (기본)
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      {/* 헤더 */}
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">JTBC 新闻学习</h1>
-          <p className="text-sm text-gray-500 mt-1">通过新闻学韩语</p>
+          <h1 className="text-2xl font-bold text-gray-900">JTBC News Study</h1>
+          <p className="text-sm text-gray-500 mt-1">Learn Korean through news</p>
         </div>
         <div className="flex gap-2">
           <a
             href="/stats"
             className="text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors font-medium"
           >
-            统计
+            Stats
           </a>
           <button
             onClick={() => setView('review')}
             className="text-sm px-3 py-2 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
           >
-            SRS复习
+            SRS Review
           </button>
         </div>
       </header>
 
-      {/* 달력 */}
+      {/* Calendar */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        {/* 월 네비게이션 */}
         <div className="flex items-center justify-between mb-3">
           <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -177,7 +168,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 요일 헤더 */}
         <div className="grid grid-cols-7 mb-1">
           {DAY_LABELS.map((label) => (
             <div key={label} className="text-center text-xs text-gray-400 py-1 font-medium">
@@ -186,7 +176,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 날짜 그리드 */}
         {weeks.map((week, wi) => (
           <div key={wi} className="grid grid-cols-7">
             {week.map((day, di) => {
@@ -225,88 +214,82 @@ export default function Home() {
         ))}
       </div>
 
-      {/* 선택된 날짜 제목 */}
       {selectedDate && (
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-gray-800">
-            {formatDateChinese(selectedDate)} 新闻联播
+            {formatDateEnglish(selectedDate)} Broadcast
           </h2>
         </div>
       )}
 
-      {/* 로딩 */}
       {loading && (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
         </div>
       )}
 
-      {/* 에러 */}
       {error && (
         <div className="bg-red-50 text-red-700 p-4 rounded-lg">
           {error}
         </div>
       )}
 
-      {/* 기사 없음 */}
       {!loading && !error && articles.length === 0 && selectedDate && (
         <div className="text-center py-16 text-gray-500">
-          <p className="text-lg mb-2">该日暂无新闻内容</p>
-          <p className="text-sm">请选择日历中有标记的日期</p>
+          <p className="text-lg mb-2">No news for this date</p>
+          <p className="text-sm">Select a marked date on the calendar</p>
         </div>
       )}
 
-      {/* 아직 날짜 선택 안 됨 */}
       {!loading && !selectedDate && (
         <div className="text-center py-16 text-gray-500">
-          <p className="text-lg mb-2">暂无新闻内容</p>
-          <p className="text-sm">每晚11点(韩国时间)自动采集</p>
+          <p className="text-lg mb-2">No news content yet</p>
+          <p className="text-sm">Auto-collected daily at 11 PM KST</p>
         </div>
       )}
 
-      {/* 기사 목록 */}
       <div className="space-y-3">
-        {articles.map((article) => (
-          <a
-            key={article.id}
-            href={`/study/${article.id}`}
-            className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all"
-          >
-            <div className="flex items-start gap-3">
-              {/* 타임스탬프 */}
-              <div className="text-xs text-gray-400 font-mono mt-0.5 shrink-0">
-                {formatTime(article.startTime)}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                {/* 토픽 배지 + 기자 */}
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TOPIC_COLORS[article.topic] || 'bg-gray-100 text-gray-600'}`}>
-                    {article.topic}
-                  </span>
-                  <span className="text-xs text-gray-400">{article.reporter ? `记者 ${article.reporter}` : ''}</span>
+        {articles.map((article) => {
+          const durationSec = Math.round(article.endTime - article.startTime);
+          const mins = Math.floor(durationSec / 60);
+          const secs = durationSec % 60;
+          return (
+            <a
+              key={article.id}
+              href={`/study/${article.id}`}
+              className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <div className="text-xs text-gray-400 font-mono mt-0.5 shrink-0">
+                  {formatTime(article.startTime)}
                 </div>
 
-                {/* 제목 */}
-                <h3 className="text-sm font-medium text-gray-900 leading-snug">
-                  {article.title}
-                </h3>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TOPIC_COLORS[article.topic] || 'bg-gray-100 text-gray-600'}`}>
+                      {article.topic}
+                    </span>
+                    <span className="text-xs text-gray-400">{article.reporter ? `Reporter: ${article.reporter}` : ''}</span>
+                  </div>
 
-                {/* 길이 표시 */}
-                <p className="text-xs text-gray-400 mt-1">
-                  {Math.round((article.endTime - article.startTime) / 60)}分{Math.round((article.endTime - article.startTime) % 60)}秒
-                </p>
-              </div>
+                  <h3 className="text-sm font-medium text-gray-900 leading-snug">
+                    {article.title}
+                  </h3>
 
-              {/* 화살표 */}
-              <div className="text-gray-300 mt-1 shrink-0">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {mins}m {secs}s
+                  </p>
+                </div>
+
+                <div className="text-gray-300 mt-1 shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </div>
               </div>
-            </div>
-          </a>
-        ))}
+            </a>
+          );
+        })}
       </div>
     </div>
   );

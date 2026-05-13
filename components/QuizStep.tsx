@@ -7,11 +7,10 @@ import { logEvent } from '@/lib/events';
 interface QuizQuestion {
   id: number;
   type: 'chinese_to_korean' | 'korean_to_chinese' | 'grammar_to_chinese' | 'chinese_to_grammar';
-  prompt: string;        // What to display as the question
-  correctAnswer: string; // The correct option
-  options: string[];     // All 4 options
-  wordOrigin?: string;   // 한자어/고유어/외래어/혼종어
-  // Legacy fields (backward compat)
+  prompt: string;
+  correctAnswer: string;
+  options: string[];
+  wordOrigin?: string;
   koreanText?: string;
 }
 
@@ -23,7 +22,6 @@ interface Props {
   onWrongAnswers: (sentences: string[]) => void;
 }
 
-// Shuffle array (Fisher-Yates)
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -33,7 +31,6 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// Generate grammar quiz questions client-side
 function generateGrammarQuestions(patterns: GrammarPattern[]): QuizQuestion[] {
   if (patterns.length < 2) return [];
 
@@ -43,7 +40,6 @@ function generateGrammarQuestions(patterns: GrammarPattern[]): QuizQuestion[] {
   );
 
   uniquePatterns.forEach((p, idx) => {
-    // Type 1: Show grammar pattern → pick correct Chinese meaning
     if (uniquePatterns.length >= 2) {
       const wrongOptions = shuffle(
         uniquePatterns.filter(x => x.pattern !== p.pattern)
@@ -59,7 +55,6 @@ function generateGrammarQuestions(patterns: GrammarPattern[]): QuizQuestion[] {
       });
     }
 
-    // Type 2: Show Chinese meaning → pick correct grammar pattern
     if (uniquePatterns.length >= 2) {
       const wrongOptions = shuffle(
         uniquePatterns.filter(x => x.pattern !== p.pattern)
@@ -80,17 +75,17 @@ function generateGrammarQuestions(patterns: GrammarPattern[]): QuizQuestion[] {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  'chinese_to_korean': '中文 → 韩语',
-  'korean_to_chinese': '韩语 → 中文',
-  'grammar_to_chinese': '语法 → 中文',
-  'chinese_to_grammar': '中文 → 语法',
+  'chinese_to_korean': 'English → Korean',
+  'korean_to_chinese': 'Korean → English',
+  'grammar_to_chinese': 'Grammar → English',
+  'chinese_to_grammar': 'English → Grammar',
 };
 
 const HINT_TEXT: Record<string, string> = {
-  'chinese_to_korean': '对应的韩语单词是？',
-  'korean_to_chinese': '这个单词的中文意思是？',
-  'grammar_to_chinese': '这个语法的中文意思是？',
-  'chinese_to_grammar': '对应的韩语语法是？',
+  'chinese_to_korean': 'What is the Korean word?',
+  'korean_to_chinese': 'What does this word mean?',
+  'grammar_to_chinese': 'What does this grammar pattern mean?',
+  'chinese_to_grammar': 'Which grammar pattern matches?',
 };
 
 export default function QuizStep({ articleId, selectedWords, grammarPatterns, onNext, onWrongAnswers }: Props) {
@@ -103,13 +98,11 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
   const [quizDone, setQuizDone] = useState(false);
   const questionStartRef = useRef<number>(Date.now());
 
-  // Generate grammar questions client-side
   const grammarQuestions = useMemo(
     () => generateGrammarQuestions(grammarPatterns),
     [grammarPatterns]
   );
 
-  // Build word → wordOrigin lookup from selectedWords
   const wordOriginMap = useMemo(() => {
     const map: Record<string, string> = {};
     selectedWords.forEach(w => {
@@ -128,7 +121,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         });
         const data = await res.json();
         if (data.questions) {
-          // Normalize: ensure all questions have 'prompt' field and carry wordOrigin
           const normalized = data.questions.map((q: QuizQuestion) => {
             const prompt = q.prompt || q.koreanText || '';
             return {
@@ -152,7 +144,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
     }
   }, [selectedWords, wordOriginMap]);
 
-  // Combine vocab + grammar questions
   const questions = useMemo(() => {
     return [...vocabQuestions, ...grammarQuestions];
   }, [vocabQuestions, grammarQuestions]);
@@ -167,7 +158,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
     const timeMs = Date.now() - questionStartRef.current;
     setResults(prev => [...prev, { correct, question }]);
 
-    // Log quiz_answer event
     logEvent('quiz_answer', {
       questionId: question.id,
       questionType: question.type,
@@ -196,7 +186,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         onWrongAnswers(wrongWords);
       }
 
-      // Log quiz_complete with breakdown by word origin
       const allResults = results;
       const correct = allResults.filter(r => r.correct).length;
       const total = allResults.length;
@@ -226,7 +215,7 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
-        <p className="text-sm text-gray-500">正在生成测验题...</p>
+        <p className="text-sm text-gray-500">Generating quiz questions...</p>
       </div>
     );
   }
@@ -234,13 +223,13 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
   if (!hasContent) {
     return (
       <div className="text-center py-20">
-        <p className="text-gray-500 mb-4">未选择任何单词</p>
-        <p className="text-sm text-gray-400 mb-6">请先在脚本学习中选择单词</p>
+        <p className="text-gray-500 mb-4">No words selected</p>
+        <p className="text-sm text-gray-400 mb-6">Select words in the script step first</p>
         <button
           onClick={onNext}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm"
         >
-          跳过，进入跟读
+          Skip to Shadowing
         </button>
       </div>
     );
@@ -259,12 +248,12 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
       <div className="text-center py-10">
         <div className="mb-8">
           <div className="text-5xl font-bold text-gray-900 mb-2">{percentage}%</div>
-          <p className="text-gray-500">{correctCount} / {total} 正确</p>
+          <p className="text-gray-500">{correctCount} / {total} correct</p>
         </div>
 
         {wrongVocab.length > 0 && (
           <div className="bg-red-50 rounded-lg p-4 mb-4 text-left">
-            <h3 className="text-sm font-semibold text-red-700 mb-2">错误单词（已保存到句子库）</h3>
+            <h3 className="text-sm font-semibold text-red-700 mb-2">Wrong Words (saved to review)</h3>
             <div className="space-y-2">
               {wrongVocab.map((r, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
@@ -278,7 +267,7 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
 
         {wrongGrammar.length > 0 && (
           <div className="bg-orange-50 rounded-lg p-4 mb-4 text-left">
-            <h3 className="text-sm font-semibold text-orange-700 mb-2">错误语法</h3>
+            <h3 className="text-sm font-semibold text-orange-700 mb-2">Wrong Grammar</h3>
             <div className="space-y-2">
               {wrongGrammar.map((r, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
@@ -292,7 +281,7 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
 
         {correctResults.length > 0 && (
           <div className="bg-green-50 rounded-lg p-4 mb-6 text-left">
-            <h3 className="text-sm font-semibold text-green-700 mb-2">正确</h3>
+            <h3 className="text-sm font-semibold text-green-700 mb-2">Correct</h3>
             <div className="flex flex-wrap gap-2">
               {correctResults.map((r, i) => (
                 <span key={i} className="px-2 py-1 bg-white rounded text-sm border border-green-200">
@@ -307,13 +296,12 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
           onClick={onNext}
           className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
         >
-          进入跟读 →
+          Go to Shadowing &rarr;
         </button>
       </div>
     );
   }
 
-  // Current question
   const question = questions[currentIndex];
   if (!question) return null;
 
@@ -321,7 +309,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
 
   return (
     <div>
-      {/* Progress bar */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -332,7 +319,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         <span className="text-xs text-gray-400">{currentIndex + 1}/{questions.length}</span>
       </div>
 
-      {/* Question type badge */}
       <div className="mb-4">
         <span className={`text-xs px-2 py-1 rounded-full ${
           isGrammarType
@@ -343,7 +329,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         </span>
       </div>
 
-      {/* Question prompt */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6 text-center">
         <p className={`font-bold text-gray-900 ${isGrammarType ? 'text-xl' : 'text-2xl'}`}>
           {question.prompt}
@@ -351,7 +336,6 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         <p className="text-sm text-gray-500 mt-2">{HINT_TEXT[question.type] || ''}</p>
       </div>
 
-      {/* Options */}
       <div className="space-y-3 mb-6">
         {question.options.map((option, i) => {
           let className = 'w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ';
@@ -379,13 +363,12 @@ export default function QuizStep({ articleId, selectedWords, grammarPatterns, on
         })}
       </div>
 
-      {/* Next button */}
       {showResult && (
         <button
           onClick={handleNextQuestion}
           className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
         >
-          {currentIndex + 1 < questions.length ? '下一题' : '查看结果'}
+          {currentIndex + 1 < questions.length ? 'Next Question' : 'View Results'}
         </button>
       )}
     </div>

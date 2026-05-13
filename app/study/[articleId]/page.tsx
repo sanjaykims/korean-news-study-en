@@ -10,10 +10,10 @@ import ShadowingStep from '@/components/ShadowingStep';
 import ReportButton from '@/components/ReportButton';
 
 const STEPS: { key: StudyStep; label: string }[] = [
-  { key: 'video', label: '观看视频' },
-  { key: 'script', label: '脚本学习' },
-  { key: 'quiz', label: '测验' },
-  { key: 'shadowing', label: '跟读' },
+  { key: 'video', label: 'Watch' },
+  { key: 'script', label: 'Script' },
+  { key: 'quiz', label: 'Quiz' },
+  { key: 'shadowing', label: 'Shadowing' },
 ];
 
 export default function StudyPage({ params }: { params: { articleId: string } }) {
@@ -25,7 +25,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
   const [grammarPatterns, setGrammarPatterns] = useState<GrammarPattern[]>([]);
   const [selectedGrammar, setSelectedGrammar] = useState<GrammarPattern[]>([]);
 
-  // Analytics: session tracking
   const sessionStartRef = useRef<number>(Date.now());
   const stageStartRef = useRef<number>(Date.now());
   const completedStagesRef = useRef<string[]>([]);
@@ -39,16 +38,13 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     });
   };
 
-  // Stage transition with analytics
   const changeStep = useCallback((newStep: StudyStep) => {
-    // Log stage_complete for current stage
     const stageDuration = Date.now() - stageStartRef.current;
     if (!completedStagesRef.current.includes(currentStep)) {
       completedStagesRef.current.push(currentStep);
     }
     logEvent('stage_complete', { stage: currentStep, durationMs: stageDuration }, params.articleId);
 
-    // Log stage_enter for new stage
     stageStartRef.current = Date.now();
     logEvent('stage_enter', { stage: newStep }, params.articleId);
 
@@ -63,7 +59,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         const data = await res.json();
         setArticle(data.article);
 
-        // Log session_start after article loads
         resetSession();
         sessionStartRef.current = Date.now();
         sessionLoggedRef.current = false;
@@ -82,7 +77,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     fetchArticle();
   }, [params.articleId]);
 
-  // Log session_complete on unmount
   useEffect(() => {
     const completedStages = completedStagesRef.current;
     return () => {
@@ -98,7 +92,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
     };
   }, [params.articleId, loading]);
 
-  // 틀린 퀴즈 답 → sentence bank 저장
   const handleWrongAnswers = async (wrongWords: string[]) => {
     try {
       await fetch('/api/sentence-bank', {
@@ -113,11 +106,10 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         }),
       });
     } catch {
-      // 저장 실패 무시
+      // ignore
     }
   };
 
-  // 쉐도잉 결과 → 낮은 점수 문장 sentence bank 저장
   const handleShadowingComplete = async (results: ShadowingResult[]) => {
     const lowScores = results.filter(r => r.score <= 2);
     if (lowScores.length === 0) return;
@@ -136,10 +128,9 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         }),
       });
     } catch {
-      // 저장 실패 무시
+      // ignore
     }
 
-    // 선택한 단어 → vocabulary_log 저장
     if (selectedWords.length > 0) {
       try {
         await fetch('/api/vocabulary', {
@@ -157,7 +148,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
           }),
         });
       } catch {
-        // 저장 실패 무시
+        // ignore
       }
     }
   };
@@ -177,7 +168,7 @@ export default function StudyPage({ params }: { params: { articleId: string } })
           {error || 'Article not found'}
         </div>
         <a href="/" className="text-blue-600 text-sm mt-4 inline-block">
-          ← 返回列表
+          &larr; Back to list
         </a>
       </div>
     );
@@ -185,7 +176,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      {/* 헤더 */}
       <div className="flex items-center gap-3 mb-6">
         <a href="/" className="text-gray-400 hover:text-gray-600 flex-shrink-0">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -194,12 +184,11 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         </a>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-bold text-gray-900 truncate">{article.title}</h1>
-          <p className="text-xs text-gray-500">{article.reporter ? `记者 ${article.reporter}` : ''}</p>
+          <p className="text-xs text-gray-500">{article.reporter ? `Reporter: ${article.reporter}` : ''}</p>
         </div>
         <ReportButton article={article} articleId={params.articleId} selectedWords={selectedWords} />
       </div>
 
-      {/* 단계 탭 */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1">
         {STEPS.map((step) => (
           <button
@@ -216,7 +205,6 @@ export default function StudyPage({ params }: { params: { articleId: string } })
         ))}
       </div>
 
-      {/* 단계별 컨텐츠 */}
       {currentStep === 'video' && (
         <VideoStep
           article={article}

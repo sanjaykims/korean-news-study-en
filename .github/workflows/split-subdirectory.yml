@@ -93,6 +93,11 @@ jobs:
         with:
           ref: ${{ env.SOURCE_BRANCH }}
           fetch-depth: 0
+          # Do NOT persist the workflow GITHUB_TOKEN into git config.
+          # It is scoped to this repo only and would otherwise be sent as an
+          # auth header on the push to the destination repo, causing a
+          # misleading "Repository not found" error.
+          persist-credentials: false
 
       - name: Verify subdirectory exists
         run: |
@@ -116,6 +121,8 @@ jobs:
         env:
           TOKEN: ${{ secrets.SPLIT_PUSH_TOKEN }}
         run: |
+          # Belt-and-suspenders: drop any persisted auth header in case it exists.
+          git config --unset-all http."https://github.com/".extraheader || true
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST_REPO}.git"
           git branch -M "${DEST_BRANCH}"
           git push -u origin "${DEST_BRANCH}"

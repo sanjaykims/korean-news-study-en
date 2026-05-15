@@ -44,9 +44,49 @@ jobs:
         run: |
           if [ -z "$TOKEN" ]; then
             echo "::error::Secret SPLIT_PUSH_TOKEN is not set."
-            echo "Add it under Settings → Secrets and variables → Actions."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
             exit 1
           fi
+
+      - name: Diagnose token access to destination
+        env:
+          TOKEN: ${{ secrets.SPLIT_PUSH_TOKEN }}
+        run: |
+          code=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${DEST_REPO}")
+          echo "GitHub API GET /repos/${DEST_REPO} -> HTTP ${code}"
+          case "$code" in
+            200)
+              echo "Token can SEE the destination repo. Checking write permission..."
+              perm=$(grep -oE '"push":[[:space:]]*(true|false)' /tmp/resp.json | head -1)
+              echo "  ${perm:-(push permission not reported)}"
+              if echo "$perm" | grep -q 'true'; then
+                echo "OK: token has push (write) access."
+              else
+                echo "::error::Token can READ ${DEST_REPO} but CANNOT push. Grant 'Contents: Read and write' (fine-grained token) or the 'repo' scope (classic token), then update the SPLIT_PUSH_TOKEN secret."
+                exit 1
+              fi
+              ;;
+            401)
+              echo "::error::HTTP 401 - the token is invalid or expired. Generate a NEW token and update the SPLIT_PUSH_TOKEN secret with the new value (no spaces/newlines)."
+              exit 1
+              ;;
+            403)
+              echo "::error::HTTP 403 - token rejected (SSO not authorized, or rate limited)."
+              exit 1
+              ;;
+            404)
+              echo "::error::HTTP 404 - the token cannot access ${DEST_REPO}. This private repo is invisible to the token. Use a CLASSIC token with the 'repo' scope, or a fine-grained token whose Repository access includes ${DEST_REPO}. Then update the SPLIT_PUSH_TOKEN secret."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected HTTP ${code} from GitHub API."
+              cat /tmp/resp.json || true
+              exit 1
+              ;;
+          esac
 
       - name: Checkout source with full history
         uses: actions/checkout@v4
@@ -79,4 +119,4 @@ jobs:
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST_REPO}.git"
           git branch -M "${DEST_BRANCH}"
           git push -u origin "${DEST_BRANCH}"
-          echo "✓ Pushed to https://github.com/${DEST_REPO} on branch ${DEST_BRANCH}"
+          echo "Pushed to https://github.com/${DEST_REPO} on branch ${DEST_BRANCH}"

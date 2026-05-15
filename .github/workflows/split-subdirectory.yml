@@ -1,14 +1,9 @@
 name: Split subdirectory into new repo
 
-# Mobile-friendly subtree split:
-#   1. Create an empty destination repo on GitHub.
-#   2. Create a fine-grained PAT with Contents: Read+Write scoped to that repo.
-#   3. Save it in this repo's Settings → Secrets and variables → Actions
-#      as `SPLIT_PUSH_TOKEN`.
-#   4. Run this workflow from the Actions tab with the inputs below.
-#
-# The destination repo must be empty (no auto-generated README/.gitignore),
-# otherwise the push will be rejected as non-fast-forward.
+# Triggers two ways:
+#   - Manually from the Actions tab (workflow_dispatch, with editable inputs)
+#   - Automatically when the `.split-trigger` file changes on main
+#     (uses the hardcoded defaults below)
 
 on:
   workflow_dispatch:
@@ -29,10 +24,19 @@ on:
         description: "Branch name to create in the destination"
         required: true
         default: "main"
+  push:
+    branches: [main]
+    paths:
+      - ".split-trigger"
 
 jobs:
   split:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_BRANCH: ${{ github.event.inputs.source_branch || 'claude/remarkable-productivity-app-GimWA' }}
+      SUBDIRECTORY: ${{ github.event.inputs.subdirectory || 'remarkable-app' }}
+      DEST_REPO: ${{ github.event.inputs.destination_repo || 'sanjaykims/remarkable-feed' }}
+      DEST_BRANCH: ${{ github.event.inputs.destination_branch || 'main' }}
     steps:
       - name: Check token
         env:
@@ -47,13 +51,13 @@ jobs:
       - name: Checkout source with full history
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_branch }}
+          ref: ${{ env.SOURCE_BRANCH }}
           fetch-depth: 0
 
       - name: Verify subdirectory exists
         run: |
-          if [ ! -d "${{ inputs.subdirectory }}" ]; then
-            echo "::error::Subdirectory '${{ inputs.subdirectory }}' does not exist on '${{ inputs.source_branch }}'."
+          if [ ! -d "${SUBDIRECTORY}" ]; then
+            echo "::error::Subdirectory '${SUBDIRECTORY}' does not exist on '${SOURCE_BRANCH}'."
             exit 1
           fi
 
@@ -66,15 +70,13 @@ jobs:
           git config user.name "github-actions"
 
       - name: Filter history to subdirectory
-        run: git filter-repo --subdirectory-filter "${{ inputs.subdirectory }}" --force
+        run: git filter-repo --subdirectory-filter "${SUBDIRECTORY}" --force
 
       - name: Push to destination repo
         env:
           TOKEN: ${{ secrets.SPLIT_PUSH_TOKEN }}
-          DEST: ${{ inputs.destination_repo }}
-          BRANCH: ${{ inputs.destination_branch }}
         run: |
-          git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST}.git"
-          git branch -M "${BRANCH}"
-          git push -u origin "${BRANCH}"
-          echo "✓ Pushed to https://github.com/${DEST} on branch ${BRANCH}"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST_REPO}.git"
+          git branch -M "${DEST_BRANCH}"
+          git push -u origin "${DEST_BRANCH}"
+          echo "✓ Pushed to https://github.com/${DEST_REPO} on branch ${DEST_BRANCH}"

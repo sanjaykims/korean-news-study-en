@@ -1,0 +1,80 @@
+name: Split subdirectory into new repo
+
+# Mobile-friendly subtree split:
+#   1. Create an empty destination repo on GitHub.
+#   2. Create a fine-grained PAT with Contents: Read+Write scoped to that repo.
+#   3. Save it in this repo's Settings → Secrets and variables → Actions
+#      as `SPLIT_PUSH_TOKEN`.
+#   4. Run this workflow from the Actions tab with the inputs below.
+#
+# The destination repo must be empty (no auto-generated README/.gitignore),
+# otherwise the push will be rejected as non-fast-forward.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: "Branch in THIS repo to filter"
+        required: true
+        default: "claude/remarkable-productivity-app-GimWA"
+      subdirectory:
+        description: "Subdirectory to extract (becomes the new repo root)"
+        required: true
+        default: "remarkable-app"
+      destination_repo:
+        description: "Destination repo as owner/name (must already exist and be empty)"
+        required: true
+        default: "sanjaykims/remarkable-feed"
+      destination_branch:
+        description: "Branch name to create in the destination"
+        required: true
+        default: "main"
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token
+        env:
+          TOKEN: ${{ secrets.SPLIT_PUSH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Secret SPLIT_PUSH_TOKEN is not set."
+            echo "Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Checkout source with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0
+
+      - name: Verify subdirectory exists
+        run: |
+          if [ ! -d "${{ inputs.subdirectory }}" ]; then
+            echo "::error::Subdirectory '${{ inputs.subdirectory }}' does not exist on '${{ inputs.source_branch }}'."
+            exit 1
+          fi
+
+      - name: Install git-filter-repo
+        run: pip install git-filter-repo
+
+      - name: Configure git identity
+        run: |
+          git config user.email "github-actions@users.noreply.github.com"
+          git config user.name "github-actions"
+
+      - name: Filter history to subdirectory
+        run: git filter-repo --subdirectory-filter "${{ inputs.subdirectory }}" --force
+
+      - name: Push to destination repo
+        env:
+          TOKEN: ${{ secrets.SPLIT_PUSH_TOKEN }}
+          DEST: ${{ inputs.destination_repo }}
+          BRANCH: ${{ inputs.destination_branch }}
+        run: |
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST}.git"
+          git branch -M "${BRANCH}"
+          git push -u origin "${BRANCH}"
+          echo "✓ Pushed to https://github.com/${DEST} on branch ${BRANCH}"

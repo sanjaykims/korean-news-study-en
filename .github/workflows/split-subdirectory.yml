@@ -4,6 +4,10 @@ name: Split subdirectory into new repo
 #   - Manually from the Actions tab (workflow_dispatch, with editable inputs)
 #   - Automatically when the `.split-trigger` file changes on main
 #     (uses the hardcoded defaults below)
+#
+# The destination repo is a generated mirror of the subdirectory, so the
+# push is a force-push: re-running this workflow replaces the destination
+# with the freshly filtered history.
 
 on:
   workflow_dispatch:
@@ -17,7 +21,7 @@ on:
         required: true
         default: "remarkable-app"
       destination_repo:
-        description: "Destination repo as owner/name (must already exist and be empty)"
+        description: "Destination repo as owner/name (must already exist)"
         required: true
         default: "sanjaykims/remarkable-feed"
       destination_branch:
@@ -125,5 +129,7 @@ jobs:
           git config --unset-all http."https://github.com/".extraheader || true
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${DEST_REPO}.git"
           git branch -M "${DEST_BRANCH}"
-          git push -u origin "${DEST_BRANCH}"
+          # Force-push: the destination is a generated mirror, so re-runs
+          # replace its history with the freshly filtered subdirectory.
+          git push -u --force origin "${DEST_BRANCH}"
           echo "Pushed to https://github.com/${DEST_REPO} on branch ${DEST_BRANCH}"
